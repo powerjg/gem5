@@ -61,114 +61,15 @@ import SimpleOpts
 
 from system import MySystem
 
-sys.path.append('configs/myconfigs/') # For the next line...
-from sample import fastforward, runSim, warmupAndRun
+# Sampling library
+from sampling import sampleROI
 
+SimpleOpts.add_option("--script", default='',
+                      help="Script to execute in the simulated system")
 SimpleOpts.set_usage("usage: %prog [options] roi_instructions \
 samples=1 runs=1")
 
 
-def simulateROI(system, instructions, samples, runs):
-    """ Do everything we need to do during the ROI.
-        At a high-level, this function executes the entire ROI and takes
-        a number of random sample points. At each point it may run multiple
-        simulations.
-
-        @param system the system we are running
-        @param instructions total instructions in the ROI (summed over all
-               CPUs)
-        @param samples number of sample points in the ROI
-        @param runs per sample point
-    """
-    from random import randint, sample, seed
-    import signal
-    import time
-
-    seed()
-
-    executed_insts = system.totalInsts()
-
-    warmup_time = opts.warmup_time
-    detailed_warmup_time = opts.detailed_warmup_time
-    detailed_time = opts.detailed_time
-
-    # We probably want to updated the max instructions by subtracting the
-    # insts that we are going to execute in the last detailed sim.
-    sample_secs = toLatency(warmup_time) + toLatency(detailed_warmup_time) \
-                    + toLatency(detailed_time)
-    # assume 1 IPC per CPU
-    instructions -= int(sample_secs * system.clk_domain.clock[0].frequency *
-                        len(system.cpu) * 1)
-
-    # Get the instruction numbers that we want to exit at for our sample
-    # points. It needs to be sorted, too.
-    sample_insts = sample(xrange(executed_insts,
-                                 executed_insts + instructions),
-                          samples)
-    sample_insts.sort()
-
-    # These are the currently running processes we have forked.
-    pids = []
-
-    # Signal handler for when the processes exit. This is how we know when
-    # to remove the child from the list of pids.
-    def handler(signum, frame):
-        assert(signum == signal.SIGCHLD)
-        try:
-            while 1:
-                pid,status = os.wait()
-                if status != 0:
-                    print "pid", pid, "failed!"
-                    sys.exit(status)
-                pids.remove(pid)
-        except OSError:
-            pass
-
-    # install the signal handler
-    signal.signal(signal.SIGCHLD, handler)
-
-    # Here's the magic
-    for i, insts in enumerate(sample_insts):
-        print "Fast forwarding to sample", i, "stopping at", insts
-        insts_past = fastforward(system, insts - system.totalInsts())
-        if insts_past/insts > 0.01:
-            print "WARNING: Went past the goal instructions by too much!"
-            print "Goal: %d, Actual: %d" % (insts, system.totalInsts())
-
-        # Max of 4 gem5 instances (-1 for this process). If we have this
-        # number of gem5 processes running, we should wait until one finishes
-        while len(pids) >= 4 - 1:
-            time.sleep(1)
-
-        # Now that we have hit the sample point take multiple observations
-        parent = m5.options.outdir
-        os.mkdir('%(parent)s/'%{'parent':parent} + str(insts))
-
-        # Clone a new gem5 process for each observation
-        for r in range(runs):
-            # Fork gem5 and get a new PID. Save the stats in a folder based on
-            # the instruction number and subdir based on run no.
-            pid = m5.fork('%(parent)s/'+str(insts)+'/'+str(r))
-            if pid == 0: # in child
-                from m5.internal.core import seedRandom
-                # Make sure each instance of gem5 starts with a different
-                # random seed. Can't just use time, since this may occur
-                # multiple times in the same second.
-                rseed = int(time.time()) * os.getpid()
-                seedRandom(rseed)
-                print "Running detailed simulation for sample:", i, "run:", r
-                warmupAndRun(system, warmup_time , detailed_warmup_time, \
-                              detailed_time)
-                print "Done with detailed simulation for sample:", i, "run:", r
-                # Just exit in the child. No need to do anything else.
-                sys.exit(0)
-            else: # in parent
-                # Append the child's PID and fast forward to the next point
-                pids.append(pid)
-
-    print "Waiting for children...", pids
-    while pids:
-        time.sleep(1)
 
 if __name__ == "__m5_main__":
     (opts, args) = SimpleOpts.parse_args()
@@ -230,7 +131,7 @@ if __name__ == "__m5_main__":
         print "Exited because", exit_event.getCause()
 
         if exit_event.getCause() == "work started count reach":
-            simulateROI(system, roiInstructions, samples, runs)
+            sampleROI(system, opts, roiInstructions, samples, runs)
         elif exit_event.getCause() == "work items exit count reached":
             end_tick = m5.curTick()
 
