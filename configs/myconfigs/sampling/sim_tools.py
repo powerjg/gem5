@@ -104,6 +104,28 @@ def runSim(sim_time):
 
         exit_event = m5.simulate(abs_ticks - m5.curTick())
 
+
+def funcWarmup(system, warmup_time):
+    """ Only performs functional warmup and returns
+        Assumes we are in KVM cpu mode
+        Return value: warmup_timing ie wall clocktime of warmup
+    """
+    print "Warming up"
+    system.switchCpus(system.cpu, system.atomicCpu)
+    warmup_timing = runSim(warmup_time)
+    return warmup_timing
+
+
+def detailedWarmup(system, detailed_warmup_time):
+    """ Perform detailed warmup for uarch structures
+        Return value: warmup_timing ie wall clocktime of warmup
+    """
+    print "Detailed warmup"
+    system.switchCpus(system.atomicCpu, system.timingCpu)
+    detailed_warmup_timing = runSim(detailed_warmup_time)
+    return detailed_warmup_timing
+
+
 def warmupAndRun(system, warmup_time, detailed_warmup_time, sim_time):
     """ Warmup and run the detailed simulation
         This function first executes the system with the atomic CPU to warmup

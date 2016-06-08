@@ -115,7 +115,8 @@ class MySystem(LinuxX86System):
         return self._host_parallel
 
     def totalInsts(self):
-        return sum([cpu.totalInsts() for cpu in self.cpu])
+        return sum([cpu.totalInsts() for cpu in self.cpu]) \
+             + sum([cpu.totalInsts() for cpu in self.atomicCpu])
 
     def createCPU(self):
         if self._no_kvm:

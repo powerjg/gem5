@@ -62,7 +62,7 @@ import SimpleOpts
 from system import MySystem
 
 # Sampling library
-from sampling import sampleROI
+from sampling import sampleROI, checkSystem
 
 SimpleOpts.add_option("--script", default='',
                       help="Script to execute in the simulated system")
@@ -76,6 +76,9 @@ if __name__ == "__m5_main__":
 
     # create the system we are going to simulate
     system = MySystem(opts)
+
+    # Check if the system is compatible with sampling library
+    checkSystem(system)
 
     if not (len(args) == 1 or len(args) == 2 or len(args) == 3):
         SimpleOpts.print_help()
@@ -131,7 +134,14 @@ if __name__ == "__m5_main__":
         print "Exited because", exit_event.getCause()
 
         if exit_event.getCause() == "work started count reach":
+
+            # sampleROI - The main sampling function!
+            #  sampleROI randomly picks points in the ROI
+            #  that are run in detailed mode for measurements.
+            #  Each sample point is simulated multiple times
+            #  to adequately cover non-determinism in the system
             sampleROI(system, opts, roiInstructions, samples, runs)
+
         elif exit_event.getCause() == "work items exit count reached":
             end_tick = m5.curTick()
 

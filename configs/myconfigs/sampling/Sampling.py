@@ -79,67 +79,26 @@ SimpleOpts.add_option("--detailed_time", default="1ms",
                       help="Simulated time in ms for detailed measurements, \
                           (size of measurment window)")
 
-from sim_tools import fastforward, runSim, warmupAndRun
+from sim_tools import *
+
 
 _valid_system = False
-
-def checkSystem(system):
-    """ Do some basic validation of the system such as does it
-        have the required objects, uses a KVM cpu etc.
-        This also adds some helper functions used by the Sampling
-        module.
-    """
-    for cpulist in ["cpu", "atomicCpu", "timingCpu"]:
-        if not (hasattr(system, cpulist) and \
-                 isinstance( getattr(system, cpulist), list) ):
-            print >> sys.stderr, "System should have three lists of"\
-                                 " cpus named- cpu, atomicCpu, timingCpu"
-            sys,exit(1)
-
-    if not isinstance(system.cpu[0], BaseKvmCPU):
-      print >> sys.stderr, "system.cpu should be of KVM cpu time !"
-        sys,exit(1)
-    if not isinstance(system.atomicCpu[0], AtomicSimpleCPU):
-      print >> sys.stderr, "system.atomicCpu should be of type AtomicSimpleCPU"
-        sys,exit(1)
-
-    # system object helper functions
-    def switchCpus(self, old, new):
-        assert(new[0].switchedOut())
-        m5.switchCpus(self, zip(old, new))
-
-    def totalInsts(self):
-        return sum([cpu.totalInsts() for cpu in self.cpu])
-
-    if not hasattr(system, 'switchCpus'):
-        system.switchCpus = classmethod(switchCpus)
-    if not hasattr(system, 'totalInsts'):
-        system.totalInsts = classmethod(totalInsts)
-
-    _valid_system = True
+sample_insts = []            #-- list storing instructions for sample points
+_sample = 0                  #-- current sample index
 
 
-def sampleROI(system, opts, instructions, samples, runs):
-    """ At a high-level, this function executes the entire ROI and takes
-        a number of random sample points. At each point it may run multiple
-        simulations.
-        This uses gem5 fork support for creating multiple simulations that
-        could diverge
+def generateSamples(system, opts, instructions, samples):
+    """ Generates a fixed number of random sample points that can
+        be used by other methods of this module.
 
         @param system the system we are running
         @param opts command line options as an instance of optparse
         @param instructions total instructions in the ROI (summed over all
                CPUs)
         @param samples number of sample points in the ROI
-        @param runs per sample point
     """
     from random import randint, sample, seed
-    import signal
-    import time
-
-    if not _valid_system:
-        checkSystem(system)
-
+    global sample_insts
     seed()
 
     executed_insts = system.totalInsts()
@@ -163,6 +122,126 @@ def sampleROI(system, opts, instructions, samples, runs):
                           samples)
     sample_insts.sort()
 
+
+
+def dumpSamples(outfile="random.samples"):
+    """ Dumps the sample points in a file so that they can
+        be used accross multiple parallel jobs
+
+        @param outfile name of the sample dump file
+    """
+    import pickle
+    rfilename = "%s/%s" % (m5.options.outdir, outfile)
+
+    print "Dumping random sample points at :", rfilename
+    rfile = open(rfilename , "w")
+    pickle.dump(sample_insts, rfile)
+    rfile.close()
+
+
+
+def loadSamples(samplefile):
+    """ Loads sample points from a file dumped previously
+        using dumpSamples().
+
+        @param samplefile name of the sample dump file
+    """
+    import pickle
+    global sample_insts
+
+    print "Loading random samples : ", samplefile
+    rfile = open(samplefile, "r")
+    sample_insts = pickle.load(rfile)
+    rfile.close()
+
+
+
+def forwardToSample(system, sample):
+    """ Fast forward to a particular sample number.
+
+        @param system the system we are running
+        @param sample to forward to
+    """
+    global _sample
+    insts = sample_insts[sample]
+    insts_past = fastforward(system, insts - system.totalInsts())
+    if insts_past/insts > 0.01:
+        print "WARNING: Went past the goal instructions by too much!"
+        print "Goal: %d, Actual: %d" % (insts, system.totalInsts())
+    _sample = sample
+
+
+
+def checkSystem(system):
+    """ Do some basic validation of the system such as does it
+        have the required objects, uses a KVM cpu etc.
+        This also adds some helper functions used by the Sampling
+        module.
+    """
+    for cpulist in ["cpu", "atomicCpu", "timingCpu"]:
+        if not (hasattr(system, cpulist) and \
+                 isinstance( getattr(system, cpulist), list) ):
+            print >> sys.stderr, "System should have three lists of"\
+                                 " cpus named- cpu, atomicCpu, timingCpu"
+            sys,exit(1)
+
+    if not isinstance(system.cpu[0], BaseKvmCPU):
+      print >> sys.stderr, "system.cpu should be of KVM cpu type !"
+      sys,exit(1)
+    if not isinstance(system.atomicCpu[0], AtomicSimpleCPU):
+      print >> sys.stderr, "system.atomicCpu should be of type AtomicSimpleCPU"
+      sys,exit(1)
+
+    # system object helper functions
+    def switchCpus(self, old, new):
+        assert(new[0].switchedOut())
+        m5.switchCpus(self, zip(old, new))
+
+    def totalInsts(self):
+        return sum([cpu.totalInsts() for cpu in self.cpu]) \
+             + sum([cpu.totalInsts() for cpu in self.atomicCpu])
+
+    if not hasattr(system, 'switchCpus'):
+        system.switchCpus = classmethod(switchCpus)
+    if not hasattr(system, 'totalInsts'):
+        system.totalInsts = classmethod(totalInsts)
+
+    _valid_system = True
+
+
+
+def Sample(system, opts, runs, warmup=True, startwith=0):
+    """ Take measurements at a single sample point.
+        Internally, this would involve running mulitple
+        simulations starting from the same point with a
+        different random seed, in order to cover divergent
+        paths. Each simulation runs in its own subdirectory
+        simply named as the run number - 0/ , 1/ , 2/ etc.
+
+        Assumes that you have fastforwarded to the sample point.
+        On returning the simulator will be using atomicCpu
+
+        @param system the system we are running
+        @param opts command line options as an instance of optparse
+        @param runs at this sample point
+        @param warmup whether to perform functional warmup, one can
+               optionally turn this off in cases where additional
+               samples are needed
+        @param startwith index of the first run directory
+               0 by default
+    """
+    import signal
+    import time
+    from random import randint
+
+    if not _valid_system:
+        checkSystem(system)
+
+    # Functional warmup can be kept common among different simulations
+    # this spreads the cost over all the runs
+    if warmup:
+        funcWarmup(system, opts.warmup_time)
+
     # These are the currently running processes we have forked.
     pids = []
 
@@ -176,52 +255,91 @@ def sampleROI(system, opts, instructions, samples, runs):
                 if status != 0:
                     print "pid", pid, "failed!"
                     sys.exit(status)
-                pids.remove(pid)
+                if pid in pids:
+                    pids.remove(pid)
         except OSError:
             pass
 
     # install the signal handler
     signal.signal(signal.SIGCHLD, handler)
 
-    # Here's the magic
-    for i, insts in enumerate(sample_insts):
-        print "Fast forwarding to sample", i, "stopping at", insts
-        insts_past = fastforward(system, insts - system.totalInsts())
-        if insts_past/insts > 0.01:
-            print "WARNING: Went past the goal instructions by too much!"
-            print "Goal: %d, Actual: %d" % (insts, system.totalInsts())
+    # clone gem5 for every new simulation/measurement
+    for r in range(startwith, runs):
 
         # Max of 4 gem5 instances (-1 for this process). If we have this
         # number of gem5 processes running, we should wait until one finishes
         while len(pids) >= 4 - 1:
             time.sleep(1)
 
-        # Now that we have hit the sample point take multiple observations
-        parent = m5.options.outdir
-        os.mkdir('%(parent)s/'%{'parent':parent} + str(insts))
+        # Fork gem5 and get a new PID. Save the stats in a folder based on
+        # the instruction number and subdir based on run no.
+        insts = sample_insts[_sample]
+        pid = m5.fork('%(parent)s/'+str(insts)+'/'+str(r))
 
-        # Clone a new gem5 process for each observation
-        for r in range(runs):
-            # Fork gem5 and get a new PID. Save the stats in a folder based on
-            # the instruction number and subdir based on run no.
-            pid = m5.fork('%(parent)s/'+str(insts)+'/'+str(r))
-            if pid == 0: # in child
-                from m5.internal.core import seedRandom
-                # Make sure each instance of gem5 starts with a different
-                # random seed. Can't just use time, since this may occur
-                # multiple times in the same second.
-                rseed = int(time.time()) * os.getpid()
-                seedRandom(rseed)
-                print "Running detailed simulation for sample:", i, "run:", r
-                warmupAndRun(system, warmup_time , detailed_warmup_time, \
-                              detailed_time)
-                print "Done with detailed simulation for sample:", i, "run:", r
-                # Just exit in the child. No need to do anything else.
-                sys.exit(0)
-            else: # in parent
-                # Append the child's PID and fast forward to the next point
-                pids.append(pid)
+        if pid == 0: # in child
+            from m5.internal.core import seedRandom
+            # Make sure each instance of gem5 starts with a different
+            # random seed. Can't just use time, since this may occur
+            # multiple times in the same second.
+            rseed = int(time.time()) * os.getpid() * randint(0,10000)
+            seedRandom(rseed)
+
+            # Detailed warmup has to be done for every new process
+            # as gem5 fork drains uarch structures
+            detailedWarmup(system, opts.detailed_warmup_time)
+
+            print "Running detailed simulation for sample:", _sample, "run:", r
+            # Reset the stats so we only record things in detailed simulation
+            m5.stats.reset()
+            runSim(opts.detailed_time)
+
+            # Just exit in the child. No need to do anything else.
+            sys.exit(0)
+        else: # in parent
+            # Append the child's PID and fast forward to the next point
+            pids.append(pid)
 
     print "Waiting for children...", pids
     while pids:
         time.sleep(1)
+    print "Done with ", runs, " runs at sample ", _sample
+
+
+
+def sampleROI(system, opts, instructions, samples, runs):
+    """ At a high-level, this function executes the entire ROI and takes
+        a number of random sample points. At each point it may run multiple
+        simulations.
+        This uses gem5 fork support for creating multiple simulations that
+        could diverge
+
+        @param system the system we are running
+        @param opts command line options as an instance of optparse
+        @param instructions total instructions in the ROI (summed over all
+               CPUs)
+        @param samples number of sample points in the ROI
+        @param runs per sample point
+    """
+
+    if not _valid_system:
+        checkSystem(system)
+
+    generateSamples(system, opts, instructions, samples)
+
+    # Here's the magic
+    for i, insts in enumerate(sample_insts):
+        print "Fast forwarding to sample", i, "stopping at", insts
+        forwardToSample(system, i)
+        executed_insts = system.totalInsts()
+        print "DEBUG: Inst executed so far ", executed_insts
+
+        # Now that we have hit the sample point take multiple observations
+        parent = m5.options.outdir
+        os.mkdir('%(parent)s/'%{'parent':parent} + str(insts))
+
+        # Take measurements at this sample point
+        Sample(system, opts, runs)
+
+        # Switch back to the KVM CPU for next fast-forward
+        system.switchCpus(system.atomicCpu, system.cpu)
+
