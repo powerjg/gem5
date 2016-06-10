@@ -87,7 +87,8 @@ sample_insts = []            #-- list storing instructions for sample points
 _sample = 0                  #-- current sample index
 
 
-def generateSamples(system, opts, instructions, samples):
+def generateSamples(system, opts, instructions, samples, \
+                    start_insts):
     """ Generates a fixed number of random sample points that can
         be used by other methods of this module.
 
@@ -96,12 +97,11 @@ def generateSamples(system, opts, instructions, samples):
         @param instructions total instructions in the ROI (summed over all
                CPUs)
         @param samples number of sample points in the ROI
+        @param start_insts instructions executed till the start of roi
     """
     from random import randint, sample, seed
     global sample_insts
     seed()
-
-    executed_insts = system.totalInsts()
 
     warmup_time = opts.warmup_time
     detailed_warmup_time = opts.detailed_warmup_time
@@ -117,8 +117,8 @@ def generateSamples(system, opts, instructions, samples):
 
     # Get the instruction numbers that we want to exit at for our sample
     # points. It needs to be sorted, too.
-    sample_insts = sample(xrange(executed_insts,
-                                 executed_insts + instructions),
+    sample_insts = sample(xrange(start_insts,
+                                 start_insts + instructions),
                           samples)
     sample_insts.sort()
 
@@ -150,10 +150,25 @@ def loadSamples(samplefile):
     global sample_insts
 
     print "Loading random samples : ", samplefile
+    if not os.path.isfile(samplefile):
+        print >> sys.stderr, "Error could not find file", samplefile
+        sys.exit(1)
+
     rfile = open(samplefile, "r")
     sample_insts = pickle.load(rfile)
     rfile.close()
 
+
+def makeSampleDir(sampleno):
+    """ Make directory for a sample
+        Returns the name of the directory
+        @param sampleno sample id number """
+    insts = sample_insts[sampleno]
+    parent = m5.options.outdir
+    sampledir = '%(parent)s/'%{'parent':parent} + str(insts)
+    if not os.path.isdir(sampledir):
+        os.mkdir(sampledir)
+    return sampledir
 
 
 def forwardToSample(system, sample):
@@ -324,7 +339,8 @@ def sampleROI(system, opts, instructions, samples, runs):
     if not _valid_system:
         checkSystem(system)
 
-    generateSamples(system, opts, instructions, samples)
+    start_insts = system.totalInsts()
+    generateSamples(system, opts, instructions, samples, start_insts)
 
     # Here's the magic
     for i, insts in enumerate(sample_insts):
