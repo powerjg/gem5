@@ -360,10 +360,10 @@ X86ISA::Interrupts::getIntAddrRange() const
 uint32_t
 X86ISA::Interrupts::readReg(ApicRegIndex reg)
 {
-    if (reg >= APIC_TRIGGER_MODE(0) &&
-            reg <= APIC_TRIGGER_MODE(15)) {
-        panic("Local APIC Trigger Mode registers are unimplemented.\n");
-    }
+    //if (reg >= APIC_TRIGGER_MODE(0) &&
+    //        reg <= APIC_TRIGGER_MODE(15)) {
+    //    panic("Local APIC Trigger Mode registers are unimplemented.\n");
+    //}
     switch (reg) {
       case APIC_ARBITRATION_PRIORITY:
         panic("Local APIC Arbitration Priority register unimplemented.\n");
@@ -403,10 +403,10 @@ X86ISA::Interrupts::setReg(ApicRegIndex reg, uint32_t val)
             reg <= APIC_IN_SERVICE(15)) {
         panic("Local APIC In-Service registers are unimplemented.\n");
     }
-    if (reg >= APIC_TRIGGER_MODE(0) &&
-            reg <= APIC_TRIGGER_MODE(15)) {
-        panic("Local APIC Trigger Mode registers are unimplemented.\n");
-    }
+    //if (reg >= APIC_TRIGGER_MODE(0) &&
+    //        reg <= APIC_TRIGGER_MODE(15)) {
+    //    panic("Local APIC Trigger Mode registers are unimplemented.\n");
+    //}
     if (reg >= APIC_INTERRUPT_REQUEST(0) &&
             reg <= APIC_INTERRUPT_REQUEST(15)) {
         panic("Local APIC Interrupt Request registers "
