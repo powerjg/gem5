@@ -52,6 +52,13 @@ from system import MySystem
 
 SimpleOpts.add_option("--script", default='',
                       help="Script to execute in the simulated system")
+SimpleOpts.add_option("--warmup_time", default="10ms",
+                      help="Simulated functional warmup time in ms")
+SimpleOpts.add_option("--detailed_warmup_time", default="10us",
+                      help="Simulated detailed warmup time in ms")
+SimpleOpts.add_option("--detailed_time", default="1ms",
+                      help="Simulated time in ms for detailed measurements, \
+                          (size of measurment window)")
 
 SimpleOpts.set_usage("usage: %prog [options] roi_instructions samples=1")
 
@@ -163,9 +170,14 @@ def simulateROI(system, instructions, samples):
 
     executed_insts = system.totalInsts()
 
+    warmup_time = opts.warmup_time
+    detailed_warmup_time = opts.detailed_warmup_time
+    detailed_time = opts.detailed_time
+
     # We probably want to updated the max instructions by subtracting the
     # insts that we are going to execute in the last detailed sim.
-    sample_secs = toLatency("10ms") + toLatency("10us") + toLatency("100us")
+    sample_secs = toLatency(warmup_time) + toLatency(detailed_warmup_time) \
+                    + toLatency(detailed_time)
     # assume 1 IPC per CPU
     instructions -= int(sample_secs * system.clk_domain.clock[0].frequency *
                         len(system.cpu) * 1)
@@ -218,10 +230,11 @@ def simulateROI(system, instructions, samples):
             # Make sure each instance of gem5 starts with a different
             # random seed. Can't just use time, since this may occur
             # multiple times in the same second.
-            rseed = int(time.time()) * os.getpid()
+            rseed = int(time.time()) * os.getpid() * randint(0,10000)
             seedRandom(rseed)
             print "Running detailed simulation for sample", i
-            warmupAndRun(system, "10ms", "10us", "100us")
+            warmupAndRun(system, warmup_time , detailed_warmup_time, \
+                          detailed_time)
             print "Done with detailed simulation for sample", i
             # Just exit in the child. No need to do anything else.
             sys.exit(0)
@@ -289,6 +302,7 @@ if __name__ == "__m5_main__":
 
         if exit_event.getCause() == "work started count reach":
             simulateROI(system, roiInstructions, samples)
+            break       #  exit after ROI is complete
         elif exit_event.getCause() == "work items exit count reached":
             end_tick = m5.curTick()
 

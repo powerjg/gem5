@@ -25,50 +25,76 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-# Authors: Jason Lowe-Power
+# Authors: Jason Lowe-Power, Brian Coutinho
 
-""" Script to run a workload in KVM with gem5
-    When this script is run without the --script parameter, gem5 will boot
-    Linux and sit at the command line, assuming this is how your disk is
-    configured. With the script parameter, the script will be executed on the
-    guest system.
+""" This script is an example of multi-threaded statistical sampling
+    where we simulate a sample multiple times to cover several possible
+    thread interleavings. Random pertubations are added during the
+    simulation to exercise mutliple execution paths/interleavings.
 
-    If your application has ROI annotations, this script will count the total
-    number of instructions executed in the ROI. It also tracks how much
-    wallclock and simulated time.
+    The sampling process thus works as two nested for-loops,
+    the outer one for each sample point in the program and
+    the inner one for mulitple observations at each sample point.
 
-    Finally, for applications with an ROI this script also generates
-    randomly chosen sample points. This can be used with the sample_one.py
-    script to perform simulation on a single sample point.
+    This script takes three arguments, the total number of instructions in the
+    ROI (which you can find by using runkvm.py), the number of sample
+    points you want to take during the execution, and the number of runs
+    to make at each sample point.
+
+    The output is a set of two levels of directories in the outdir.
+    At the top level is directory for each sample point which in turn
+    contains multiple sub-directories for each random observation.
+
 """
 
+import os
 import sys
 import time
 
 import m5
-import m5.ticks
 from m5.objects import *
+from m5.ticks import fromSeconds
+from m5.util.convert import toLatency
 
 sys.path.append('configs/common/') # For the next line...
 import SimpleOpts
 
 from system import MySystem
-from sampling import generateSamples, dumpSamples
+
+# Sampling library
+from sampling import sampleROI, checkSystem
 
 SimpleOpts.add_option("--script", default='',
                       help="Script to execute in the simulated system")
-SimpleOpts.set_usage("usage: %prog [options] [samples=50]")
+SimpleOpts.set_usage("usage: %prog [options] roi_instructions \
+samples=1 runs=1")
+
+
 
 if __name__ == "__m5_main__":
     (opts, args) = SimpleOpts.parse_args()
 
-    if len(args) == 1:
-        samples = int(args[0])
-    else:
-        samples = 50
-
     # create the system we are going to simulate
     system = MySystem(opts)
+
+    # Check if the system is compatible with sampling library
+    checkSystem(system)
+
+    if not (len(args) == 1 or len(args) == 2 or len(args) == 3):
+        SimpleOpts.print_help()
+        fatal("Simulate script requires one or two or three arguments")
+
+    roiInstructions = int(args[0])
+
+    if len(args) == 2 or len(args) == 3:
+        samples = int(args[1])
+    else:
+        samples = 1
+
+    if len(args) == 3:
+        runs = int(args[2])
+    else:
+        runs = 1
 
     # For workitems to work correctly
     # This will cause the simulator to exit simulation when the first work
@@ -90,33 +116,34 @@ if __name__ == "__m5_main__":
         # Note: The simulator is quite picky about this number!
         root.sim_quantum = int(1e9) # 1 ms
 
+    # Disable the gdb ports. Required for high core counts and forking.
+    m5.disableAllListeners()
+
     # instantiate all of the objects we've created above
     m5.instantiate()
 
     globalStart = time.time()
 
-
+    # Keep running until we are done.
     print "Running the simulation"
     exit_event = m5.simulate()
-
-    # While there is still something to do in the guest keep executing.
-    # This is needed since we exit for the ROI begin/end
-    foundROI = False
     while exit_event.getCause() != "m5_exit instruction encountered":
-        # If the user pressed ctrl-c on the host, then we really should exit
         if exit_event.getCause() == "user interrupt received":
             print "User interrupt. Exiting"
             break
-
         print "Exited because", exit_event.getCause()
 
         if exit_event.getCause() == "work started count reach":
-            start_tick = m5.curTick()
-            start_insts = system.totalInsts()
-            foundROI = True
+
+            # sampleROI - The main sampling function!
+            #  sampleROI randomly picks points in the ROI
+            #  that are run in detailed mode for measurements.
+            #  Each sample point is simulated multiple times
+            #  to adequately cover non-determinism in the system
+            sampleROI(system, opts, roiInstructions, samples, runs)
+
         elif exit_event.getCause() == "work items exit count reached":
             end_tick = m5.curTick()
-            end_insts = system.totalInsts()
 
         print "Continuing"
         exit_event = m5.simulate()
@@ -128,16 +155,4 @@ if __name__ == "__m5_main__":
     print "Total wallclock time: %.2fs, %.2f min" % \
                 (time.time()-globalStart, (time.time()-globalStart)/60)
 
-    if foundROI:
-        roiinstructions = end_insts - start_insts
-        print "Simulated time in ROI: %.2fs" % ((end_tick-start_tick)/1e12)
-        print "Instructions executed in ROI: %d" % ((roiinstructions))
 
-
-        # Randomly pick sample points from the ROI
-        print "Generating ROI sample points"
-        generateSamples(system, opts, roiinstructions, samples, start_insts)
-
-        # Dump these sample points so that we can simulate
-        # each one of them in its own gem5 process.
-        dumpSamples()
