@@ -31,7 +31,8 @@
 
     This script takes two arguments, the total number of instructions in the
     ROI (which you can find by using runkvm.py) and the number of sample
-    points you want to take during the execution.
+    points you want to take during the execution. A sample point is defined
+    by the total instruction count up to the sample.
 
     The output is a set of directories in the outdir, one per sample point.
 """
@@ -53,12 +54,12 @@ from system import MySystem
 SimpleOpts.add_option("--script", default='',
                       help="Script to execute in the simulated system")
 SimpleOpts.add_option("--warmup_time", default="10ms",
-                      help="Simulated functional warmup time in ms")
+                      help="Simulated functional warmup time")
 SimpleOpts.add_option("--detailed_warmup_time", default="10us",
-                      help="Simulated detailed warmup time in ms")
+                      help="Simulated detailed warmup time")
 SimpleOpts.add_option("--detailed_time", default="1ms",
-                      help="Simulated time in ms for detailed measurements, \
-                          (size of measurment window)")
+                      help="Simulated time for detailed measurements,"\
+                         "(size of measurment window)")
 
 SimpleOpts.set_usage("usage: %prog [options] roi_instructions samples=1")
 
@@ -302,9 +303,9 @@ if __name__ == "__m5_main__":
 
         if exit_event.getCause() == "work started count reach":
             simulateROI(system, roiInstructions, samples)
-            break       #  exit after ROI is complete
         elif exit_event.getCause() == "work items exit count reached":
             end_tick = m5.curTick()
+            #break       #  exit after ROI is complete
 
         print "Continuing"
         exit_event = m5.simulate()
