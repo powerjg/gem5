@@ -35,26 +35,28 @@
 
     ----------------------
     What this module expects:
-    The system object must have a three cpu models named as follows-
+    The system object must have three cpu models named as follows-
 
-      system.cpu : should be a list of type KVM cpu to enable KVM
-                   fast-forward mode
-      system.atomicCpu : should be a matching sized list of the
-                   AtomicSimpleCPU type for warming up caches etc.
-      system.timingCPU: should contain instances of the cpu type
-                   you wish to use in the experiments
+          system.cpu : should be a list of KVM cpu type to enable
+                       fast-forwarding
+    system.atomicCpu : should be a matching sized list of the
+                       AtomicSimpleCPU type for warming up caches.
+    system.timingCPU : should be a list of instances of the detailed
+                       cpu model you wish to measure in your system.
 
     Secondly, if you simulate a multi-threaded application the system
-    should have some componenet that adds a small amount of non-determinism
+    should have some component that adds a small amount of non-determinism
     to each simulation. In the example scripts we add a small random delay
     on every last level cache miss to create this effect. The module
     changes the random seed for each simulation at a sample point in order
     to cover all divergent paths.
+
+    See system/system.py for the example system used here
     ----------------------
 
     Please look at the technical report below for details on how to
     determine sampling paramters and a recommended flowchart for the
-    sampling process
+    sampling process.
     <TBD>
 """
 
@@ -72,12 +74,12 @@ import SimpleOpts
 
 
 SimpleOpts.add_option("--warmup_time", default="10ms",
-                      help="Simulated functional warmup time in ms")
+                      help="Simulated functional warmup time")
 SimpleOpts.add_option("--detailed_warmup_time", default="10us",
-                      help="Simulated detailed warmup time in ms")
+                      help="Simulated detailed warmup time")
 SimpleOpts.add_option("--detailed_time", default="1ms",
-                      help="Simulated time in ms for detailed measurements, \
-                          (size of measurment window)")
+                      help="Simulated time for detailed measurements,"\
+                         " (size of measurment window)")
 
 from sim_tools import *
 
@@ -91,6 +93,8 @@ def generateSamples(system, opts, instructions, samples, \
                     start_insts):
     """ Generates a fixed number of random sample points that can
         be used by other methods of this module.
+        The sample instruction counts are loaded internally into
+        the sample_insts variable
 
         @param system the system we are running
         @param opts command line options as an instance of optparse
@@ -125,18 +129,16 @@ def generateSamples(system, opts, instructions, samples, \
 
 
 def dumpSamples(outfile="random.samples"):
-    """ Dumps the sample points in a file so that they can
-        be used accross multiple parallel jobs
+    """ Dumps the sample points to a file in the gem5 outdir
+        so that they can be used accross multiple parallel jobs
 
         @param outfile name of the sample dump file
     """
     import pickle
     rfilename = "%s/%s" % (m5.options.outdir, outfile)
 
-    print "Dumping random sample points at :", rfilename
-    rfile = open(rfilename , "w")
-    pickle.dump(sample_insts, rfile)
-    rfile.close()
+    with open(rfilename , "w") as rfile:
+        pickle.dump(sample_insts, rfile)
 
 
 
@@ -149,14 +151,12 @@ def loadSamples(samplefile):
     import pickle
     global sample_insts
 
-    print "Loading random samples : ", samplefile
     if not os.path.isfile(samplefile):
         print >> sys.stderr, "Error could not find file", samplefile
         sys.exit(1)
 
-    rfile = open(samplefile, "r")
-    sample_insts = pickle.load(rfile)
-    rfile.close()
+    with open(samplefile, "r") as rfile:
+        sample_insts = pickle.load(rfile)
 
 
 def makeSampleDir(sampleno):
@@ -190,22 +190,32 @@ def forwardToSample(system, sample):
 def checkSystem(system):
     """ Do some basic validation of the system such as does it
         have the required objects, uses a KVM cpu etc.
-        This also adds some helper functions used by the Sampling
-        module.
+
+        The system object must have three cpu models named as follows-
+              system.cpu : should be a list of KVM cpu type to enable
+                           fast-forwarding
+        system.atomicCpu : should be a matching sized list of the
+                           AtomicSimpleCPU type for warming up caches.
+        system.timingCPU : should be a list of instances of the detailed
+                           cpu model you wish to measure in your system.
+
+        This also adds two helper functions to the system object
+        that are used by the Sampling module - switchCpus() and
+        totalInsts()
     """
     for cpulist in ["cpu", "atomicCpu", "timingCpu"]:
         if not (hasattr(system, cpulist) and \
                  isinstance( getattr(system, cpulist), list) ):
             print >> sys.stderr, "System should have three lists of"\
                                  " cpus named- cpu, atomicCpu, timingCpu"
-            sys,exit(1)
+            sys.exit(1)
 
     if not isinstance(system.cpu[0], BaseKvmCPU):
       print >> sys.stderr, "system.cpu should be of KVM cpu type !"
-      sys,exit(1)
+      sys.exit(1)
     if not isinstance(system.atomicCpu[0], AtomicSimpleCPU):
       print >> sys.stderr, "system.atomicCpu should be of type AtomicSimpleCPU"
-      sys,exit(1)
+      sys.exit(1)
 
     # system object helper functions
     def switchCpus(self, old, new):

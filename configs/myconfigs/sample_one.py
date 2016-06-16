@@ -27,20 +27,74 @@
 #
 # Authors: Jason Lowe-Power, Brian Coutinho
 
-""" This script shows an example of forwarding to and simulating
-    a single sample point. The sample instructions are determined
-    initially by running runkvm.py. The advantage of this is that
-    each sample can be run as a seperate job in parallel on a large
-    machine or a computer cluster.
+""" Statistical Sampling Library Example - Simulating one sample:
 
-    To use this, first generate sample points with runkvm.py.
-    For ex. setting the output directory to ./examples/bench1/ and
-    running runkvm.py should generate a file
-    ./examples/bench1/random.samples
+       This scripts fast forwards to a single sample point in the
+    ROI and then runs multiple simulations at this sample point.
+    This potentially allows you to simulate multiple samples in
+    parallel.
 
-    To simulate a specific sample number simply run this script
-    by pointing to the same output directory. This script will
-    automatically create a sub-direcotry for the sample.
+    The intent behind this script is to parallelize the sampling
+    process rather than running a single full-blown gem5 process
+    (as in sample_2d.py). Each sample could run in parallel on
+    a large machine or on different machines if a network file
+    system is supported.
+
+    It also demonstrates using some of the lower level functions
+    in the sampling library.
+
+    -------------
+    Example Usage:
+
+        The sampling process is broken down into two steps.
+    The first step is to determine at which points the samples
+    should be taken (runkvm.py). The second step is to use
+    sample_one.py to then run one of the samples.
+
+    Step 1:
+
+    To generate the sample points use runkvm.py with a suitable
+    output directory
+    For ex, to select 50 sample points use-
+
+    ./build/X86/gem5.opt --outdir examples/streamcluster   \
+        configs/myconfigs/runkvm.py  <..options..>  50
+
+    This will create a summary of the chosen sample points in
+    the file  examples/streamcluster/random.samples
+
+    Step 2:
+    Now, this script could be used to simulate one of the samples
+    by specifying the index number of ths sample to simulate.
+    (in the above example the sample index could be from 0 to 49)
+    Also, set the same output directory as used with run_kvm.py
+
+    For ex, to simulate the sample index '3' with 10 simulations
+    ./build/X86/gem5.opt --outdir examples/streamcluster   \
+        configs/myconfigs/simulate_one.py  <..options..>  3 10
+
+    -------------
+    Usage:
+
+    This script takes two arguments-
+        1. The sample index number to simulate.
+           (could vary from 0 to samples-1 )
+        2. The number of runs i.e simulations at this sample point
+
+    -------------
+    Output:
+
+    This script generates a sub-directory for the sample specified
+    on the command line. The instruction count of the sample is
+    used as the name. This further is sub-divided into one directory
+    for each simulation at this sample point.
+
+    For example, if the instruction count for sample 3 is
+    49349553615 and the number of simulations is 10,  this would
+    generate an output dirctory as -
+    --49349553615/
+        |- 0/       |- 1/       |- 2/       !- 3/      |- 4/
+        |- 5/       |- 6/       |- 7/       !- 8/      |- 9/
 
 """
 
@@ -56,25 +110,28 @@ from m5.util.convert import toLatency
 sys.path.append('configs/common/') # For the next line...
 import SimpleOpts
 
-from system import MySystem
-
 # Sampling library
 from sampling import forwardToSample, Sample, makeSampleDir, \
                      checkSystem, loadSamples
 
+# This is an example system object. You could replace this with
+# the system you want to simulate.
+# See a more detailed explanation in sample_2d.py
+from system import MySystem
+
 SimpleOpts.add_option("--script", default='',
                       help="Script to execute in the simulated system")
-SimpleOpts.set_usage("usage: %prog [options] sampleno runs=1")
+SimpleOpts.set_usage("usage: %prog [options] sample_index runs=1")
 
 
-def simulateROI(system, opts, sampleno, runs):
+def simulateROI(system, opts, sampleidx, runs):
     """ Fast forward to and simulate a single sample point """
     # Create the sample directory with our friendly method
-    makeSampleDir(sampleno)
+    makeSampleDir(sampleidx)
 
     # First forward to the specific sample number
-    print "Fast forwarding to sample", sampleno
-    forwardToSample(system, sampleno)
+    print "Fast forwarding to sample", sampleidx
+    forwardToSample(system, sampleidx)
 
     # Take runs number of measurements at this point
     Sample(system, opts, runs)
@@ -94,12 +151,14 @@ if __name__ == "__m5_main__":
         SimpleOpts.print_help()
         fatal("Simulate script requires one or two arguments")
 
-    sampleno = int(args[0])
+    sampleidx = int(args[0])
 
     if len(args) == 2:
         runs = int(args[1])
     else:
         runs = 1
+
+    print "Arguments given: sample index = %d , runs = %d" % (sampleidx, runs)
 
     # For workitems to work correctly
     # This will cause the simulator to exit simulation when the first work
@@ -145,7 +204,7 @@ if __name__ == "__m5_main__":
         print "Exited because", exit_event.getCause()
 
         if exit_event.getCause() == "work started count reach":
-            simulateROI(system, opts, sampleno, runs)
+            simulateROI(system, opts, sampleidx, runs)
             break
 
         elif exit_event.getCause() == "work items exit count reached":

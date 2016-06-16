@@ -27,23 +27,66 @@
 #
 # Authors: Jason Lowe-Power, Brian Coutinho
 
-""" This script is an example of multi-threaded statistical sampling
-    where we simulate a sample multiple times to cover several possible
-    thread interleavings. Random pertubations are added during the
-    simulation to exercise mutliple execution paths/interleavings.
+""" Statistical Sampling Library Example:
 
-    The sampling process thus works as two nested for-loops,
-    the outer one for each sample point in the program and
-    the inner one for mulitple observations at each sample point.
+        This script gives an example of using the sampling library
+    for a multi-threaded application. It runs in full system mode
+    and could virtually support any multi-threaded application suite.
 
-    This script takes three arguments, the total number of instructions in the
-    ROI (which you can find by using runkvm.py), the number of sample
-    points you want to take during the execution, and the number of runs
-    to make at each sample point.
+    -------------
+    Background:
 
-    The output is a set of two levels of directories in the outdir.
-    At the top level is directory for each sample point which in turn
-    contains multiple sub-directories for each random observation.
+    The idea behind statistical sampling is to estimate the
+    performance of a system by simulating small portions of the
+    application in detail (sample points). The results can then be
+    condensed to give a statistically bound estimate.
+    For a mulit-threaded program it is not sufficient to simulate
+    a sample only once because minute timing differences could lead
+    to different execution paths and a large performance difference.
+    Instead, we simulate the same sample multiple times with
+    small random pertubations to cover most possible interleavings.
+
+    -------------
+    Working:
+
+    Internally, the sampling library first selects a set of random
+    sample points from the ROI of the application. A sample point
+    is defined by an instruction count i.e. total instructions
+    executed untill the start of the sample. It then fast-forwards
+    to each sample point, warms up the caches and does multiple
+    simulations at that point. It continues this process till the
+    last sample is simulated.
+
+    The actual process of sampling is abstracted by the sampleROI()
+    function used here. Other example scripts in this dirctory
+    use basic functions that allow more fine grained control
+
+    -------------
+    Usage:
+
+    This script takes three arguments-
+        1. The total number of instructions in the ROI
+            (which you can find by using runkvm.py)
+        2. The number of sample points you want to take in the ROI
+        3. The number of runs i.e simulations at each sample point
+
+    -------------
+    Output:
+
+    This script's output is a set of sub-directories, one per
+    sample point, named by the instructioni count for the sample point.
+    Each sample directory is further sub-divided into one directory
+    for each simulation at this point. These are named numerically
+    by the simulation number such as 0/, 1/, 2/
+
+    For example, with 4 samples and 5 runs the output could look like
+    |
+    --49349553615/  --371088644479/  --192271861574/  --1049777390582/
+      |- 0/           |- 0/            |- 0/            |- 0/
+      |- 1/           |- 1/            |- 1/            |- 1/
+      |- 2/           |- 2/            |- 2/            |- 2/
+      |- 3/           |- 3/            |- 3/            |- 3/
+      |- 4/           |- 4/            |- 4/            |- 4/
 
 """
 
@@ -59,15 +102,34 @@ from m5.util.convert import toLatency
 sys.path.append('configs/common/') # For the next line...
 import SimpleOpts
 
-from system import MySystem
-
 # Sampling library
 from sampling import sampleROI, checkSystem
 
+# ----------------------------------------------------------------
+#    This is an example system object. You could replace this with
+#  the system you want to simulate.
+#  This script only expects that the system contains three
+#  cpu object instances named as follows
+#        system.cpu : should be a list of KVM cpu type to enable
+#                     fast-forwarding
+#  system.atomicCpu : should be a matching sized list of the
+#                     AtomicSimpleCPU type for warming up caches.
+#  system.timingCPU : should be a list of instances of the detailed
+#                     cpu model you wish to measure in your system.
+#  NOTE: the system should also have a source of non-determinism
+#        such a random delay injected in memory acceses
+#  See system/system.py for details our example system used here
+#
+#  The example system can easily be built on to suit a different
+#  system configuration, you can also use configure it with
+#  command line arguments  (run with --help to see available options)
+from system import MySystem
+# ----------------------------------------------------------------
+
 SimpleOpts.add_option("--script", default='',
                       help="Script to execute in the simulated system")
-SimpleOpts.set_usage("usage: %prog [options] roi_instructions \
-samples=1 runs=1")
+SimpleOpts.set_usage("usage: %prog [options] roi_instructions "\
+                      "samples=1 runs=1")
 
 
 
@@ -95,6 +157,9 @@ if __name__ == "__m5_main__":
         runs = int(args[2])
     else:
         runs = 1
+
+    print "Arguments given:  roi_instructions = %d ," % roiInstructions, \
+          "samples = %d , runs = %d" % (samples, runs)
 
     # For workitems to work correctly
     # This will cause the simulator to exit simulation when the first work
