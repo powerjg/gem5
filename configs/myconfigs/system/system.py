@@ -47,6 +47,10 @@ class MySystem(LinuxX86System):
       default=_infrastructure + 'gem5_system_files/disks/linux-bigswap2.img',
       help="The second disk image to mount (/dev/hdb)")
 
+    # To configure random memory delays
+    SimpleOpts.add_option("--max_random_delay", default='4ns',
+                  help="Max random delay to inject into the memory requests")
+
     def __init__(self, opts, no_kvm=False):
         super(MySystem, self).__init__()
         self._opts = opts
@@ -204,9 +208,17 @@ class MySystem(LinuxX86System):
 
         ranges = self._getInterleaveRanges(self.mem_ranges[-1], num, 7, 20)
 
+        # Random memory delay module
+        # Add these on each memory channel
+        mdelay = self._opts.max_random_delay;
+        self.random_bridges = [RandomDelayBridge(max_delay = mdelay) \
+                                    for i in range(num)]
+        for bridge in self.random_bridges:
+            bridge.slave = self.membus.master
+
         self.mem_cntrls = [
             cls(range = ranges[i],
-                port = self.membus.master,
+                port = self.random_bridges[i].master,
                 channels = num)
             for i in range(num)
         ] + [kernel_controller]

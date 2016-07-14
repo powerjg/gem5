@@ -27,7 +27,7 @@
 #
 # Authors: Brian Coutinho, Keshav Mathur, Jason Lowe-Power
 
-""" Statistical Sampling library for gem5:
+""" Statistical Sampling library for gem5 (TARDIS)
 
     This library provides support for performing statistical sampling
     on multi-threaded workloads.  See the accompanying example script
