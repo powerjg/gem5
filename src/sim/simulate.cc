@@ -31,6 +31,10 @@
  *          Steve Reinhardt
  */
 
+#include "sim/simulate.hh"
+
+#include <unistd.h>
+
 #include <mutex>
 #include <thread>
 
@@ -41,7 +45,6 @@
 #include "sim/eventq_impl.hh"
 #include "sim/sim_events.hh"
 #include "sim/sim_exit.hh"
-#include "sim/simulate.hh"
 #include "sim/stat_control.hh"
 
 //! Mutex for handling async events.
@@ -83,11 +86,12 @@ simulate(Tick num_cycles)
 {
     // The first time simulate() is called from the Python code, we need to
     // create a thread for each of event queues referenced by the
-    // instantiated sim objects.
-    static bool threads_initialized = false;
+    // instantiated sim objects. In fact, this needs to be done for each new
+    // process we create (e.g., with fork())
+    static int threads_initialized_pid = 0;
     static std::vector<std::thread *> threads;
 
-    if (!threads_initialized) {
+    if (threads_initialized_pid != getpid()) {
         threadBarrier = new Barrier(numMainEventQueues);
 
         // the main thread (the one we're currently running on)
@@ -97,7 +101,7 @@ simulate(Tick num_cycles)
             threads.push_back(new std::thread(thread_loop, mainEventQueue[i]));
         }
 
-        threads_initialized = true;
+        threads_initialized_pid = getpid();
         simulate_limit_event =
             new GlobalSimLoopExitEvent(mainEventQueue[0]->getCurTick(),
                                        "simulate() limit reached", 0);
