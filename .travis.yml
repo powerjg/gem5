@@ -5,6 +5,8 @@ script:
 
 dist: "trusty"
 
+cache: ccache
+
 matrix:
   include:
     - os: osx
