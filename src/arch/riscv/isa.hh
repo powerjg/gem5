@@ -44,6 +44,7 @@
 #include "arch/riscv/registers.hh"
 #include "arch/riscv/types.hh"
 #include "base/misc.hh"
+#include "cpu/reg_class.hh"
 #include "sim/sim_object.hh"
 
 struct RiscvISAParams;
@@ -58,7 +59,6 @@ class ISA : public SimObject
 {
   protected:
     std::vector<MiscReg> miscRegFile;
-    std::map<int, std::string> miscRegNames;
 
   public:
     typedef RiscvISAParams Params;
@@ -78,6 +78,12 @@ class ISA : public SimObject
     void
     setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc);
 
+    RegId
+    flattenRegId(const RegId &regId) const
+    {
+        return regId;
+    }
+
     int
     flattenIntIndex(int reg) const
     {
@@ -86,6 +92,18 @@ class ISA : public SimObject
 
     int
     flattenFloatIndex(int reg) const
+    {
+        return reg;
+    }
+
+    int
+    flattenVecIndex(int reg) const
+    {
+        return reg;
+    }
+
+    int
+    flattenVecElemIndex(int reg) const
     {
         return reg;
     }

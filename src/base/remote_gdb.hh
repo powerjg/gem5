@@ -260,20 +260,8 @@ class BaseRemoteGDB
         return trap(SIGTRAP);
     }
 
-  protected:
-    class SingleStepEvent : public Event
-    {
-      protected:
-        BaseRemoteGDB *gdb;
-
-      public:
-        SingleStepEvent(BaseRemoteGDB *g) : gdb(g)
-        {}
-
-        void process();
-    };
-
-    SingleStepEvent singleStepEvent;
+    void processSingleStepEvent();
+    EventFunctionWrapper singleStepEvent;
 
     void clearSingleStep();
     void setSingleStep();
@@ -364,6 +352,8 @@ class GDBListener
     void accept();
     void listen();
     std::string name();
+
+    int getPort() const;
 };
 
 #endif /* __REMOTE_GDB_H__ */

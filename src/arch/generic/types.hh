@@ -37,6 +37,12 @@
 #include "base/types.hh"
 #include "sim/serialize.hh"
 
+// Logical register index type.
+typedef uint16_t RegIndex;
+
+/** Logical vector register elem index type. */
+using ElemIndex = uint16_t;
+
 namespace GenericISA
 {
 

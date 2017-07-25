@@ -248,7 +248,9 @@ BaseCPU::BaseCPU(Params *p, bool is_checker)
 
     if (FullSystem) {
         if (params()->profile)
-            profileEvent = new ProfileEvent(this, params()->profile);
+            profileEvent = new EventFunctionWrapper(
+                [this]{ processProfileEvent(); },
+                name());
     }
     tracer = params()->tracer;
 
@@ -658,21 +660,15 @@ BaseCPU::flushTLBs()
     }
 }
 
-
-BaseCPU::ProfileEvent::ProfileEvent(BaseCPU *_cpu, Tick _interval)
-    : cpu(_cpu), interval(_interval)
-{ }
-
 void
-BaseCPU::ProfileEvent::process()
+BaseCPU::processProfileEvent()
 {
-    ThreadID size = cpu->threadContexts.size();
-    for (ThreadID i = 0; i < size; ++i) {
-        ThreadContext *tc = cpu->threadContexts[i];
-        tc->profileSample();
-    }
+    ThreadID size = threadContexts.size();
 
-    cpu->schedule(this, curTick() + interval);
+    for (ThreadID i = 0; i < size; ++i)
+        threadContexts[i]->profileSample();
+
+    schedule(profileEvent, curTick() + params()->profile);
 }
 
 void
@@ -782,4 +778,10 @@ BaseCPU::traceFunctionsInternal(Addr pc)
                  curTick() - functionEntryTick, curTick(), sym_str);
         functionEntryTick = curTick();
     }
+}
+
+bool
+BaseCPU::waitForRemoteGDB() const
+{
+    return params()->wait_for_remote_gdb;
 }

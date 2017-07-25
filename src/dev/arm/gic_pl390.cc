@@ -87,7 +87,9 @@ Pl390::Pl390(const Params *p)
         cpuBpr[x] = GICC_BPR_MINIMUM;
         // Initialize cpu highest int
         cpuHighestInt[x] = SPURIOUS_INT;
-        postIntEvent[x] = new PostIntEvent(*this, x);
+        postIntEvent[x] =
+            new EventFunctionWrapper([this, x]{ postDelayedInt(x); },
+                                     "Post Interrupt to CPU");
     }
     DPRINTF(Interrupt, "cpuEnabled[0]=%d cpuEnabled[1]=%d\n", cpuEnabled[0],
             cpuEnabled[1]);
@@ -258,6 +260,18 @@ Pl390::readDistributor(ContextID ctx, Addr daddr, size_t resp_sz)
         return (((sys->numRunningContexts() - 1) << 5) |
                 (itLines/INT_BITS_MAX -1) |
                 (haveGem5Extensions ? 0x100 : 0x0));
+      case GICD_PIDR0:
+        //ARM defined DevID
+        return (GICD_400_PIDR_VALUE & 0xFF);
+      case GICD_PIDR1:
+        return ((GICD_400_PIDR_VALUE >> 8) & 0xFF);
+      case GICD_PIDR2:
+        return ((GICD_400_PIDR_VALUE >> 16) & 0xFF);
+      case GICD_PIDR3:
+        return ((GICD_400_PIDR_VALUE >> 24) & 0xFF);
+      case GICD_IIDR:
+         /* revision id is resorted to 1 and variant to 0*/
+        return GICD_400_IIDR_VALUE;
       default:
         panic("Tried to read Gic distributor at offset %#x\n", daddr);
         break;
@@ -287,7 +301,7 @@ Pl390::readCpu(ContextID ctx, Addr daddr)
 {
     switch(daddr) {
       case GICC_IIDR:
-        return 0;
+        return GICC_400_IIDR_VALUE;
       case GICC_CTLR:
         return cpuEnabled[ctx];
       case GICC_PMR:
@@ -869,6 +883,14 @@ Pl390::drain()
     } else {
         return DrainState::Draining;
     }
+}
+
+
+void
+Pl390::drainResume()
+{
+    // There may be pending interrupts if checkpointed from Kvm; post them.
+    updateIntState(-1);
 }
 
 void

@@ -67,9 +67,22 @@ class Pl390 : public BaseGic, public BaseGicRegisters
         GICD_TYPER         = 0x004, // controller type
         GICD_IIDR          = 0x008, // implementer id
         GICD_SGIR          = 0xf00, // software generated interrupt
+        GICD_PIDR0         = 0xfe0, // distributor peripheral ID0
+        GICD_PIDR1         = 0xfe4, // distributor peripheral ID1
+        GICD_PIDR2         = 0xfe8, // distributor peripheral ID2
+        GICD_PIDR3         = 0xfec, // distributor peripheral ID3
 
         DIST_SIZE          = 0xfff
     };
+
+    /**
+     * As defined in:
+     * "ARM Generic Interrupt Controller Architecture" version 2.0
+     * "CoreLink GIC-400 Generic Interrupt Controller" revision r0p1
+     */
+    static constexpr uint32_t  GICD_400_PIDR_VALUE = 0x002bb490;
+    static constexpr uint32_t  GICD_400_IIDR_VALUE = 0x200143B;
+    static constexpr uint32_t  GICC_400_IIDR_VALUE = 0x202143B;
 
     static const AddrRange GICD_IGROUPR;    // interrupt group (unimplemented)
     static const AddrRange GICD_ISENABLER;  // interrupt set enable
@@ -318,7 +331,7 @@ class Pl390 : public BaseGic, public BaseGicRegisters
     /** See if some processor interrupt flags need to be enabled/disabled
      * @param hint which set of interrupts needs to be checked
      */
-    void updateIntState(int hint);
+    virtual void updateIntState(int hint);
 
     /** Update the register that records priority of the highest priority
      *  active interrupt*/
@@ -340,21 +353,7 @@ class Pl390 : public BaseGic, public BaseGicRegisters
      */
     void postDelayedInt(uint32_t cpu);
 
-    /** Event definition to post interrupt to CPU after a delay
-    */
-    class PostIntEvent : public Event
-    {
-      private:
-        Pl390 &parent;
-        uint32_t cpu;
-      public:
-        PostIntEvent(Pl390 &_parent, uint32_t _cpu)
-            : parent(_parent), cpu(_cpu)
-        { }
-        void process() { parent.postDelayedInt(cpu); }
-        const char *description() const { return "Post Interrupt to CPU"; }
-    };
-    PostIntEvent *postIntEvent[CPU_MAX];
+    EventFunctionWrapper *postIntEvent[CPU_MAX];
     int pendingDelayedInterrupts;
 
   public:
@@ -368,6 +367,7 @@ class Pl390 : public BaseGic, public BaseGicRegisters
     ~Pl390();
 
     DrainState drain() override;
+    void drainResume() override;
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
