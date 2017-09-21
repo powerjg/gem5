@@ -5,8 +5,8 @@ the collection of :class:`whimsy.test.TestCase` objects they contain.
 
 The runner supports two outside methods of running items.
 
-The first - :func:`Runner.run` - will run all TestSuite instances in the runner's
-`suites` attribute.
+The first - :func:`Runner.run` - will run all TestSuite instances in the
+runner's `suites` attribute.
 
 The second - :func:`Runner.run_items` - takes in any number of items and will
 attempt to run each of them in succession.
