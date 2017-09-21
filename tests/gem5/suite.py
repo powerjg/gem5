@@ -61,7 +61,7 @@ def gem5_verify_config(name,
                     name=constants.gem5_returncode_fixture_name)
 
             # Common name of this generated testcase.
-            _name = '{given_name} [{isa} - {opt}]'.format(
+            _name = '{given_name}-{isa}-{opt}'.format(
                     given_name=name,
                     isa=isa,
                     opt=opt)

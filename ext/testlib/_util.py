@@ -211,7 +211,7 @@ def uid(testitem, class_name=None):
                                os.path.commonprefix(
                                        (absdirpath(__file__),
                                        filepath)))
-    fmt = '{file}:{class_}:{name}'
+    fmt = '{file}-{class_}-{name}'
     if class_name is None:
         class_name = testitem.__class__.__name__
     return fmt.format(file=filepath, name=testitem.name,
