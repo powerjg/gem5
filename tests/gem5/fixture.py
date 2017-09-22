@@ -20,10 +20,18 @@ class TempdirFixture(Fixture):
         name = self.default_name if name is None else name
         super(TempdirFixture, self).__init__(name, **kwargs)
         self.path = None
+        self.cleanup = True
 
     def setup(self):
-        self.path = tempfile.mkdtemp()
+        self.path = tempfile.mkdtemp(prefix='gem5out')
 
+    def teardown(self):
+        if self.cleanup:
+            import shutil
+            shutil.rmtree(self.path)
+
+    def skip_cleanup(self):
+        self.cleanup = False
 
 class SConsFixture(Fixture):
     '''
@@ -167,3 +175,40 @@ class TestProgram(MakeTarget):
             super(MakeTarget, self).setup()
         elif not os.path.exists(self.path):
             super(MakeTarget, self).setup()
+
+class DownloadedProgram(Fixture):
+    """ Like TestProgram, but checks the version in the gem5 binary repository
+        and downloads an updated version if it is needed.
+    """
+    urlbase = "http://gem5.org/dist/current/"
+
+    def __init__(self, path, program, **kwargs):
+        super(DownloadedProgram, self).__init__("download-" + program,
+                                                build_once=True, **kwargs)
+
+        self.program_dir = joinpath('test-progs', path)
+        self.path = joinpath(self.program_dir, program)
+
+        self.url = self.urlbase + self.path
+
+    def _download(self):
+        import urllib
+        log.debug("Downlading " + self.url + " to " + self.path)
+        urllib.urlretrieve(self.url, self.path)
+
+    def _getremotetime(self):
+        import urllib2, datetime, time
+        u = urllib2.urlopen(self.url)
+        return time.mktime(datetime.datetime.strptime( \
+                    u.info().getheaders("Last-Modified")[0],
+                    "%a, %d %b %Y %X GMT").timetuple())
+
+    def setup(self):
+        # Check to see if there is a file downloaded
+        if not os.path.exists(self.path):
+            self._download()
+        else:
+            t = self._getremotetime()
+            # If the server version is more recent, download it
+            if t > os.path.getmtime(self.path):
+                self._download()
