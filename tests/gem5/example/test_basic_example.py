@@ -3,22 +3,28 @@ Test file for the util m5 exit assembly instruction.
 '''
 from testlib import *
 
-ref_path = joinpath(getcwd(), 'ref', 'X86', 'linux', 'se-default')
+test_progs = {
+    'x86': ('hello64-static', 'hello64-dynamic', 'hello32-static'),
+    'arm': ('hello64-static', 'hello32-static'),
+}
 
-verifiers = (
-        verifier.MatchStdout(joinpath(ref_path, 'simout')),
+for isa in test_progs:
+    for binary in test_progs[isa]:
+        import os
+        path = os.path.join('hello', 'bin', isa, 'linux')
+        hello_program = DownloadedProgram(path, binary)
 
-        # The se.py script is dumb and sets a strange return code on success.
-        verifier.VerifyReturncode(1),
-)
+        ref_path = joinpath(getcwd(), 'ref')
 
-hello_program = TestProgram('hello', 'X86', 'linux')
+        verifiers = (
+                verifier.MatchStdoutNoPerf(joinpath(ref_path, 'simout')),
+        )
 
-gem5_verify_config(
-        name='test_hello',
-        fixtures=(hello_program,),
-        verifiers=verifiers,
-        config=joinpath(config.base_dir, 'configs', 'example','se.py'),
-        config_args=['--cmd', hello_program.path],
-        valid_isas=('X86',)
-)
+        gem5_verify_config(
+                name='test'+binary,
+                fixtures=(hello_program,),
+                verifiers=verifiers,
+                config=joinpath(config.base_dir, 'configs', 'example','se.py'),
+                config_args=['--cmd', hello_program.path],
+                valid_isas=(isa.upper(),),
+        )
