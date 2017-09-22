@@ -151,12 +151,6 @@ def _create_test_run_gem5(config, config_args, gem5_args):
         command.append(config)
         # Config_args should set up the program args.
         command.extend(config_args)
-        try:
-            log_call(command)
-        except CalledProcessError as e:
-            returncode.value = e.returncode
-            if e.returncode != 1:
-                raise e
-        else:
-            returncode.value = 0
+        log_call(command)
+
     return test_run_gem5
