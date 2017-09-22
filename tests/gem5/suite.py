@@ -94,8 +94,8 @@ def gem5_verify_config(name,
             fixtures.append(tempdir)
             fixtures.append(gem5_returncode)
             # Add the isa and optimization to tags list.
-            tags = copy.copy(tags)
-            tags.extend((opt, isa))
+            real_tags = copy.copy(tags)
+            real_tags.extend((opt, isa))
 
             # Place our gem5 run and verifiers into a failfast test
             # collection. We failfast because if a gem5 run fails, there's no
@@ -109,7 +109,7 @@ def gem5_verify_config(name,
             testsuites.append(TestSuite(
                 _name,
                 fixtures=fixtures,
-                tags=tags,
+                tags=real_tags,
                 tests=gem5_test_collection))
     return testsuites
 
