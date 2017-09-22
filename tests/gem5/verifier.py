@@ -46,7 +46,9 @@ class MatchGoldStandard(Verifier):
                                    self.test_filename,
                                    self.ignore_regex)
         if diff is not None:
-            test.fail('Stdout did not match:\n%s' % diff)
+            fixtures[constants.tempdir_fixture_name].skip_cleanup()
+            test.fail('Stdout did not match:\n%s\nSee %s for full results'
+                      % (diff, tempdir))
 
     def _generic_instance_warning(self, kwargs):
         '''
@@ -89,6 +91,12 @@ class MatchStdout(DerivedGoldStandard):
             re.compile("^info: kernel located at:"),
             re.compile("^Couldn't unlink "),
             re.compile("^Using GPU kernel code file\(s\) "),
+        ]
+
+class MatchStdoutNoPerf(MatchStdout):
+    _file = constants.gem5_simulation_stdout
+    _default_ignore_regex = MatchStdout._default_ignore_regex + [
+            re.compile('^Exiting @ tick'),
         ]
 
 class MatchStderr(DerivedGoldStandard):
@@ -141,17 +149,6 @@ class MatchRegex(Verifier):
                                    constants.gem5_simulation_stderr)):
                 return # Success
         test.fail('Could not match regex.')
-
-
-class VerifyReturncode(Verifier):
-    def __init__(self, returncode, name=None):
-        self.expected_returncode = returncode
-        super(VerifyReturncode, self).__init__(name)
-
-    def test(self, fixtures):
-        test.assertEquals(self.expected_returncode,
-                fixtures[constants.gem5_returncode_fixture_name].value)
-        pass
 
 _re_type = type(re.compile(''))
 def _iterable_regex(regex):
