@@ -30,6 +30,11 @@ class TestSuite(object):
             suite will cause the execution of the test suite to halt.
         '''
         self.testlist = TestList(tests)
+
+        # Make sure all of the tests have the same tags as the suite
+        for test in self.testlist:
+            test.tags = tags
+
         self.fail_fast = fail_fast
 
         self._name = name
