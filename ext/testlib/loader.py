@@ -221,9 +221,6 @@ class TestLoader(object):
         self._test_rindex = OrderedDict()
         self._suite_rindex = OrderedDict()
 
-        # Holds a mapping of tag->testitem
-        self._cached_tag_index = None
-
         # Member variables used to keep track of instances of suites, cases,
         # and fixtures when execfile'ing.
         # They are temporary and will be reset for each file we load.
@@ -247,60 +244,9 @@ class TestLoader(object):
         assert self._loaded_a_file
         return tuple(self._fixtures)
 
-    @property
-    def tags(self):
-        assert self._loaded_a_file
-        return tuple(self._tag_index)
-
     def get_uid(self, uid):
         '''Return the test item with the given uid.'''
         return self._test_index.get(uid, self._suite_index.get(uid, None))
-
-    @property
-    def _tag_index(self):
-        '''Return dictionary of key->[testitem].'''
-        if self._cached_tag_index is None:
-            self._build_tags(self._suites)
-        return self._cached_tag_index
-
-    def suites_with_tag(self, tag):
-        for item in self.tag_index(tag):
-            if isinstance(item, TestSuite):
-                yield item
-
-    def tag_index(self, tag):
-        '''
-        Return a list of test items with the given tag.
-        '''
-        return self._tag_index.get(tag, [])
-
-    def _build_tags(self, suites):
-        '''
-        Build a dictionary mapping a tag to a list of TestSuites and TestCases
-        with that tag.
-        '''
-        item_tags = {}
-        uniq_tags = set()
-        # Build index of testitem->[tags]
-        for test_suite in suites:
-            item_tags[test_suite] = test_suite.tags
-            uniq_tags.update(test_suite.tags)
-            for test in test_suite:
-                item_tags[test] = test.tags | test_suite.tags
-                uniq_tags.update(test.tags)
-
-        # Build Reverse index (tag->[testitems])
-        self._cached_tag_index = {}
-        for item, itemtags in item_tags.items():
-            for _tag in uniq_tags:
-                if _tag in itemtags:
-                    testlist = self._cached_tag_index.setdefault(_tag, [])
-                    testlist.append(item)
-
-
-    def drop_caches(self):
-        '''Drop our internal tag cache.'''
-        self._cached_tag_index = None
 
     def discover_files(self, root):
         '''
@@ -370,9 +316,6 @@ class TestLoader(object):
         path = os.path.abspath(path)
         if __debug__:
             self._loaded_a_file = True
-
-        # Remove our cache of tagged test items since they may be modified.
-        self.drop_caches()
 
         if collection is None:
             collection = self._suites

@@ -14,10 +14,10 @@ def gem5_verify_config(name,
                        config_args,
                        verifiers,
                        gem5_args=tuple(),
-                       tags=[],
                        fixtures=[],
                        valid_isas=constants.supported_isas,
-                       valid_optimizations=constants.supported_optimizations):
+                       valid_optimizations=constants.supported_optimizations,
+                       length=constants.supported_lengths[0]):
     '''
     Helper class to generate common gem5 tests using verifiers.
 
@@ -94,8 +94,11 @@ def gem5_verify_config(name,
             fixtures.append(tempdir)
             fixtures.append(gem5_returncode)
             # Add the isa and optimization to tags list.
-            real_tags = copy.copy(tags)
-            real_tags.extend((opt, isa))
+            tags = {
+                constants.isa_tag_type: set([isa]),
+                constants.optimization_tag_type: set([opt]),
+                constants.length_tag_type: set([length]),
+            }
 
             # Place our gem5 run and verifiers into a failfast test
             # collection. We failfast because if a gem5 run fails, there's no
@@ -109,7 +112,7 @@ def gem5_verify_config(name,
             testsuites.append(TestSuite(
                 _name,
                 fixtures=fixtures,
-                tags=real_tags,
+                tags=tags,
                 tests=gem5_test_collection))
     return testsuites
 

@@ -1,5 +1,7 @@
 from os import getcwd
 
+from config import constants
+
 from _util import uid
 
 class TestSuite(object):
@@ -12,8 +14,9 @@ class TestSuite(object):
         system this class' :code:`__new__` method must be called. The loader class
         will monkey patch this method in order to enumerate suites.
     '''
-    def __init__(self, name, tests=tuple(), tags=None, fixtures=None,
-            fail_fast=True):
+    def __init__(self, name, tests=tuple(),
+                 tags = {typ: set() for typ in constants.supported_tags},
+                 fixtures=None, fail_fast=True):
         '''
         :param name: Name of the TestSuite
 
@@ -37,11 +40,19 @@ class TestSuite(object):
             fixtures = {fixture.name: fixture for fixture in fixtures}
         self.fixtures = fixtures
 
-        if tags is None:
-            tags = set()
-        self.tags = set(tags)
+        self.tags = tags
 
         self._path = getcwd()
+
+    def match_tags(self, tags):
+        """ True if the supplied tags match our tags.
+            Tag matching means that we have all of the tags of the incoming
+            tag check for each of the tag types.
+        """
+        for typ,vals in tags.iteritems():
+            if not self.tags[typ] & vals:
+                return False
+        return True
 
     @property
     def name(self):

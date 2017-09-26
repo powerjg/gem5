@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from os import getcwd
 
+from config import constants
 from suite import TestList
 from unittest import FunctionTestCase as _Ftc
 from functools import partial
@@ -52,7 +53,9 @@ class TestCase(object):
         called by subclasses in order for them to be discovered by the
         :class:`whimsy.loader.TestLoader`.
     '''
-    def __init__(self, name, tags=None, fixtures=None, path=None):
+    def __init__(self, name,
+                 tags = {typ: set() for typ in constants.supported_tags},
+                 fixtures = None, path = None):
         '''
         This must be called in subclasses for tests to be recognized by the
         test loader.
@@ -75,14 +78,22 @@ class TestCase(object):
             fixtures = {fixture.name: fixture for fixture in fixtures}
         self.fixtures = fixtures
 
-        if tags is None:
-            tags = set()
-        self.tags = set(tags)
+        self.tags = tags
 
         self._name = name
         if path is None:
             path = getcwd()
         self._path = path
+
+    def match_tags(self, tags):
+        """ True if the supplied tags match our tags.
+            Tag matching means that we have all of the tags of the incoming
+            tag check for each of the tag types.
+        """
+        for typ,vals in tags.iteritems():
+            if not self.tags[typ] & vals:
+                return False
+        return True
 
     @property
     def uid(self):
