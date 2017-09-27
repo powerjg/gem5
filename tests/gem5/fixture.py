@@ -194,6 +194,8 @@ class DownloadedProgram(Fixture):
     def _download(self):
         import urllib
         log.debug("Downlading " + self.url + " to " + self.path)
+        if not os.path.exists(self.program_dir):
+            os.makedirs(self.program_dir)
         urllib.urlretrieve(self.url, self.path)
 
     def _getremotetime(self):
@@ -204,11 +206,17 @@ class DownloadedProgram(Fixture):
                     "%a, %d %b %Y %X GMT").timetuple())
 
     def setup(self):
+        import urllib2
         # Check to see if there is a file downloaded
         if not os.path.exists(self.path):
             self._download()
         else:
-            t = self._getremotetime()
+            try:
+                t = self._getremotetime()
+            except urllib2.URLError:
+                # Problem checking the server, use the old files.
+                log.debug("Could not contact server. Binaries may be old.")
+                return
             # If the server version is more recent, download it
             if t > os.path.getmtime(self.path):
                 self._download()

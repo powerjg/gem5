@@ -13,6 +13,15 @@ class Verifier(test.TestFunction):
         name = name if name is not None else self.__class__.__name__
         super(Verifier, self).__init__(self.test, name, **kwargs)
 
+    def failed(self, fixtures):
+        '''
+        Called if this verifier fails to cleanup (or not) as needed.
+        '''
+        try:
+            fixtures[constants.tempdir_fixture_name].skip_cleanup()
+        except KeyError:
+            pass # No need to do anything if the tempdir fixture doesn't exist
+
 
 class MatchGoldStandard(Verifier):
     '''
@@ -46,7 +55,7 @@ class MatchGoldStandard(Verifier):
                                    self.test_filename,
                                    self.ignore_regex)
         if diff is not None:
-            fixtures[constants.tempdir_fixture_name].skip_cleanup()
+            self.failed(fixtures)
             test.fail('Stdout did not match:\n%s\nSee %s for full results'
                       % (diff, tempdir))
 
@@ -148,6 +157,7 @@ class MatchRegex(Verifier):
             if parse_file(joinpath(tempdir,
                                    constants.gem5_simulation_stderr)):
                 return # Success
+        self.failed(fixtures)
         test.fail('Could not match regex.')
 
 _re_type = type(re.compile(''))
