@@ -12,9 +12,15 @@ gem5's testing infrastructure has the following goals:
 
 # Running tests
 
+Below is the most common way the tests are run. This will run all of the "quick"
+tests with ``gem5.opt`` for the x86 ISA. Of course, if your changes touch other
+ISAs you should test all ISAs or the ISA that concerns your change.
+Additionally, it is often a good idea to run longer tests (e.g., linux boot)
+before submitting your patch.
+
 ```shell
 cd tests
-./main.py run --length quick
+./main.py run --length quick --optimization opt --isa x86
 ```
 
 ## Specifying a subset of tests to run
@@ -43,11 +49,33 @@ use
 ./main.py run --optimization opt --optimization fast
 ```
 
-You can also specify "and" between different types of tags by sepcifying more than one type on the command line. For instance, this will only run tests with both the "X86" and "opt" tags.
+You can also specify "and" between different types of tags by specifying more than one type on the command line. For instance, this will only run tests with both the "X86" and "opt" tags.
 
 ```shell
 ./main.py run --isa X86 --optimization opt
 ```
+
+# Binary test applications
+
+The code for test binaries can be found in ``tests/test-progs``.
+Here, there's one directory per test application.
+The source code is under the ``source`` directory.
+
+You may have a ``bin`` directory as well.
+The ``bin`` directory is automatically created when running the test case that uses the test binary.
+The binary is downloaded from the gem5 servers the first time it is referenced by a test.
+
+## Updating the test binaries
+
+The test infrastructure should check with the gem5 servers to ensure you have the latest binaries.
+However, if you believe your binaries are out of date, simply delete the ``bin`` directory and they will be re-downloaded to your local machine.
+
+## Building (new-style) test binaries
+
+In each ``src/`` directory under ``tests/test-progs``, there is a Makefile.
+This Makefile downloads a docker image and builds the test binary for some ISA (e.g., Makefile.x86 builds the binary for x86).
+Additionally, if you run ``make upload`` it will upload the binaries to the gem5 server, if you have access to modify the binaries.
+*If you need to modify the binaries for updating a test or adding a new test and you don't have access to the gem5 server, contact a maintainer (see MAINTAINERS).*
 
 # If something goes wrong
 
