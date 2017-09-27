@@ -9,7 +9,7 @@ m5_exit_regex = re.compile(
 r'Exiting @ tick \d* because m5_exit instruction encountered'
 )
 
-test_program = TestProgram('m5-exit', 'X86', 'linux')
+test_program = DownloadedProgram('m5-exit/bin/x86/linux/', 'm5_exit')
 
 a = verifier.MatchRegex(m5_exit_regex)
 gem5_verify_config(
