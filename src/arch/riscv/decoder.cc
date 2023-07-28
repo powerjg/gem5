@@ -53,6 +53,10 @@ Decoder::moreBytes(const PCStateBase &pc, Addr fetchPC)
     // TODO: Current vsetvl instructions stall decode. Future fixes should
     // enable speculation, and this code will be removed.
     if (GEM5_UNLIKELY(!this->vConfigDone)) {
+        fatal_if(!enableRvv,
+            "Vector extension is not enabled for this CPU type\n"
+            "You can manually enable vector extensions by setting rvv_enabled "
+            "to true for each decoder after `createThreads()`\n");
         DPRINTF(Decode, "Waiting for vset*vl* to be executed\n");
         instDone = false;
         outOfBytes = false;
