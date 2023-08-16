@@ -35,9 +35,20 @@ from .downloader import get_resource
 from .looppoint import LooppointCsvLoader, LooppointJsonLoader
 from ..isas import ISA, get_isa_from_str
 
-from typing import Optional, Dict, Union, Type, Tuple, List, Any
+from typing import (
+    Optional,
+    Dict,
+    Union,
+    Type,
+    Tuple,
+    List,
+    Any,
+    Set,
+    Generator,
+)
 
 from .client import get_resource_json_obj
+
 
 """
 Resources are items needed to run a simulation, such as a disk image, kernel,
@@ -554,6 +565,122 @@ class SimpointDirectoryResource(SimpointResource):
         return simpoint_list, weight_list
 
 
+class SuiteResource(AbstractResource):
+    """
+    A suite resource. This resource is used to specify a suite of workloads to
+    run on a board. It contains a list of workloads to run, along with their
+    IDs and versions.
+
+    Each workload in a suite is used to create a `WorkloadResource` object.
+    These objects are stored in a list and can be iterated over.
+    """
+
+    def __init__(
+        self,
+        workload_obj_list: List[Tuple["WorkloadResource", str]] = [],
+        resource_version: Optional[str] = None,
+        description: Optional[str] = None,
+        source: Optional[str] = None,
+        **kwargs,
+    ) -> None:
+        """
+        :param workloads: A list of dictionaries containing the workload
+        :param workload_obj_list: A list of `WorkloadResource` objects
+        created from the `_workloads` parameter.
+        :param local_path: The path on the host system where this resource is
+        located.
+        :param description: Description describing this resource. Not a
+        required parameter. By default is None.
+        :param source: The source (as in "source code") for this resource
+        on gem5-resources. Not a required parameter. By default is None.
+        :param resource_version: Version of the resource itself.
+        """
+        self._workload_obj_list = workload_obj_list
+        self._description = description
+        self._source = source
+        self._resource_version = resource_version
+
+        super().__init__(
+            description=description,
+            source=source,
+            resource_version=resource_version,
+        )
+
+    def __iter__(self) -> Generator["WorkloadResource", None, None]:
+        """
+        Returns a generator that iterates over the workloads in the suite.
+
+        :yields: A generator that iterates over the workloads in the suite.
+        """
+        for workload in self._workload_obj_list:
+            yield workload[0]
+
+    def __len__(self):
+        """
+        Returns the number of workloads in the suite.
+
+        :returns: The number of workloads in the suite.
+        """
+        return len(self._workload_obj_list)
+
+    def with_input_group(self, input_group: str) -> "SuiteResource":
+        """
+        Returns a new SuiteResource object with only the workloads that use the
+        specified input group.
+
+        :param input_group: The input group to filter the workloads by.
+        :returns: A new SuiteResource object with only the workloads that use
+        the specified input group.
+        """
+
+        if input_group not in self.get_input_groups():
+            raise Exception(
+                f"Input group {input_group} not found in Suite.\n"
+                f"Available input groups are {self.get_input_groups()}"
+            )
+
+        filtered_workload_obj_list = []
+
+        for obj, group in self._workload_obj_list:
+            if input_group in group:
+                filtered_workload_obj_list.append((obj, group))
+
+        return SuiteResource(
+            local_path=self._local_path,
+            resource_version=self._resource_version,
+            description=self._description,
+            source=self._source,
+            workload_obj_list=filtered_workload_obj_list,
+        )
+
+    def get_input_groups(self) -> Set[str]:
+        """
+        Returns a set of all input groups used by the workloads in a suite.
+
+        :returns: A set of all input groups used by the workloads in a suite.
+        """
+        return {
+            input_group
+            for _, input_groups in self._workload_obj_list
+            for input_group in input_groups
+        }
+
+    def get_all_workloads(
+        self,
+    ) -> Generator[Tuple[str, str, List[str], "WorkloadResource"], None, None]:
+        """
+        Returns a list of all workloads in the suite in the following format:
+        :yields: A list of all workloads in the suite.
+        """
+        for workload, input_group in self._workload_obj_list:
+            yield (
+                workload.get_id(),
+                workload.get_resource_version(),
+                input_group,
+                workload,
+            )
+
+
 class WorkloadResource(AbstractResource):
     """A workload resource. This resource is used to specify a workload to run
     on a board. It contains the function to call and the parameters to pass to
@@ -563,6 +690,7 @@ class WorkloadResource(AbstractResource):
     def __init__(
         self,
         function: str = None,
+        id: Optional[str] = None,
         resource_version: Optional[str] = None,
         description: Optional[str] = None,
         source: Optional[str] = None,
@@ -582,8 +710,13 @@ class WorkloadResource(AbstractResource):
             resource_version=resource_version,
         )
 
+        self._id = id
         self._func = function
         self._params = parameters
+
+    def get_id(self) -> str:
+        """Returns the ID of the workload."""
+        return self._id
 
     def get_function_str(self) -> str:
         """
@@ -718,6 +851,23 @@ def obtain_resource(
     assert resources_category in _get_resource_json_type_map
     resource_class = _get_resource_json_type_map[resources_category]
 
+    if resources_category == "suite":
+        workloads = resource_json["workloads"]
+        workload_obj_list = []
+        for workload in workloads:
+            workload_obj_list.append(
+                (
+                    obtain_resource(
+                        workload["id"],
+                        resource_version=workload["resource_version"],
+                        resource_directory=resource_directory,
+                        clients=clients,
+                        gem5_version=gem5_version,
+                    ),
+                    workload["input_group"],
+                )
+            )
+        resource_json["workload_obj_list"] = workload_obj_list
     if resources_category == "workload":
         # This parses the "resources" and "additional_params" fields of the
         # workload resource into a dictionary of AbstractResource objects and
@@ -892,5 +1042,6 @@ _get_resource_json_type_map = {
     "resource": Resource,
     "looppoint-pinpoint-csv": LooppointCsvResource,
     "looppoint-json": LooppointJsonResource,
+    "suite": SuiteResource,
     "workload": WorkloadResource,
 }
