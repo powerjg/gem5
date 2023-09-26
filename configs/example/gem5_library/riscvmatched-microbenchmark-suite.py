@@ -33,16 +33,12 @@ The print statements in the script are for illustrative purposes only,
 and are not required to run the script.
 """
 
+from gem5.utils.multiprocessing import Process
 from gem5.resources.resource import obtain_resource
-from gem5.simulate.simulator import Simulator
-from gem5.prebuilt.riscvmatched.riscvmatched_board import RISCVMatchedBoard
-from gem5.isas import ISA
-from gem5.utils.requires import requires
 
-requires(isa_required=ISA.RISCV)
+from riscvmatched_hello import run_binary as run_workload
 
-# instantiate the riscv matched board with default parameters
-board = RISCVMatchedBoard()
+from time import sleep
 
 # obtain the RISC-V Vertical Microbenchmarks
 microbenchmarks = obtain_resource("riscv-vertical-microbenchmarks")
@@ -70,17 +66,22 @@ for resource in microbenchmarks:
 print("Input groups present in the suite:")
 print(microbenchmarks.get_input_groups())
 
-# for this example, we will filter the suite
-# to run the Workload "riscv-cca-run"
-# it has the input group 'cca', which is used as the filter
-board.set_workload(list(microbenchmarks.with_input_group("cca"))[0])
+if __name__ == "__m5_main__":
+    processes = []
+    for i, bm in enumerate(microbenchmarks):
+        if len(processes) > 2:
+            for process in processes:
+                if not process.is_alive():
+                    processes.remove(process)
+            sleep(10)
+        process = Process(target=run_workload, args=(bm,), name=bm.get_id())
+        process.start()
+        processes.append(process)
+        if i == 6:
+            break
 
-# run the simulation with the RISCV Matched board
-simulator = Simulator(board=board, full_system=False)
-simulator.run()
-print(
-    "Exiting @ tick {} because {}.".format(
-        simulator.get_current_tick(),
-        simulator.get_last_exit_event_cause(),
-    )
-)
+    while processes:
+        for process in processes:
+            if not process.is_alive():
+                processes.remove(process)
+        sleep(10)

@@ -37,27 +37,35 @@ scons build/RISCV/gem5.opt
 ```
 """
 
-from gem5.resources.resource import obtain_resource
-from gem5.simulate.simulator import Simulator
-from gem5.prebuilt.riscvmatched.riscvmatched_board import RISCVMatchedBoard
-from gem5.isas import ISA
-from gem5.utils.requires import requires
 
-requires(isa_required=ISA.RISCV)
+def run_binary(binary):
 
-# instantiate the riscv matched board with default parameters
-board = RISCVMatchedBoard()
+    from gem5.simulate.simulator import Simulator
+    from gem5.prebuilt.riscvmatched.riscvmatched_board import RISCVMatchedBoard
+    from gem5.isas import ISA
+    from gem5.utils.requires import requires
 
-# set the hello world riscv binary as the board workload
-board.set_se_binary_workload(obtain_resource("riscv-hello"))
+    requires(isa_required=ISA.RISCV)
 
-# run the simulation with the RISCV Matched board
-simulator = Simulator(board=board, full_system=False)
-simulator.run()
+    # instantiate the riscv matched board with default parameters
+    board = RISCVMatchedBoard()
 
-print(
-    "Exiting @ tick {} because {}.".format(
-        simulator.get_current_tick(),
-        simulator.get_last_exit_event_cause(),
+    # set the hello world riscv binary as the board workload
+    board.set_workload(binary)
+
+    # run the simulation with the RISCV Matched board
+    simulator = Simulator(board=board, full_system=False)
+    simulator.run()
+
+    print(
+        "Exiting @ tick {} because {}.".format(
+            simulator.get_current_tick(),
+            simulator.get_last_exit_event_cause(),
+        )
     )
-)
+
+
+if __name__ == "__m5_main__":
+    from gem5.resources.resource import obtain_resource
+
+    run_binary(obtain_resource("riscv-hello"))
