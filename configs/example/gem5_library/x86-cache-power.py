@@ -5,7 +5,7 @@ from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.components.processors.cpu_types import CPUTypes
 from gem5.resources.resource import Resource
 from gem5.simulate.simulator import Simulator
-from l1privatel2shared_cache_with_pm import PrivateL1SharedL2CacheHierarchy
+from l1privatel2shared_cache_with_pm.l1privatel2shared_cache_with_pm import PrivateL1SharedL2CacheHierarchy
 
 
 # Obtain the components.
