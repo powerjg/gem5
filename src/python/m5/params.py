@@ -2460,6 +2460,38 @@ class DeprecatedParam:
         warn(f"{instance_name}.{self._oldName} is deprecated. {self.message}")
 
 
+class PyFunc(ParamValue):
+    """A parameter type that allows for python functions to be passed as
+    parameters. This is useful for creating callbacks to python functions
+    from C++ code.
+
+    Usage example:
+    ```
+    class SomeDevice(SimObject):
+        callback = Param.PyFunc(lambda x: print(x))
+    ```
+    """
+
+    cxx_type = "pybind11::object"
+
+    def __init__(self, value):
+        self.value = value
+
+    def __call__(self, value):
+        self.__init__(value)
+        return value
+
+    def getValue(self):
+        return self.value
+
+    def __str__(self):
+        return str(self.value)
+
+    @classmethod
+    def cxx_predecls(cls, code):
+        code('#include "python/pybind11/pybind.hh"')
+
+
 baseEnums = allEnums.copy()
 baseParams = allParams.copy()
 

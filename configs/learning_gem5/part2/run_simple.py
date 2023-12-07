@@ -44,6 +44,14 @@ root = Root(full_system=False)
 # Create an instantiation of the simobject you created
 root.hello = SimpleObject()
 
+
+def print_hello():
+    print("Hello world! Executing the print_hello callback")
+    print(f"@ tick {m5.curTick()}")
+
+
+root.hello.func = print_hello
+
 # instantiate all of the objects we've created above
 m5.instantiate()
 

@@ -34,9 +34,12 @@ namespace gem5
 {
 
 SimpleObject::SimpleObject(const SimpleObjectParams &params) :
-    SimObject(params)
+    SimObject(params), test(params.func)
 {
     std::cout << "Hello World! From a SimObject!" << std::endl;
+    pybind11::function func =
+        pybind11::reinterpret_borrow<pybind11::function>(test);
+    func();
 }
 
 } // namespace gem5

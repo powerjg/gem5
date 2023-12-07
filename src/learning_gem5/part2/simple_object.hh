@@ -30,6 +30,7 @@
 #define __LEARNING_GEM5_SIMPLE_OBJECT_HH__
 
 #include "params/SimpleObject.hh"
+#include "python/pybind11/pybind.hh"
 #include "sim/sim_object.hh"
 
 namespace gem5
@@ -39,6 +40,7 @@ class SimpleObject : public SimObject
 {
   public:
     SimpleObject(const SimpleObjectParams &p);
+    pybind11::object test;
 };
 
 } // namespace gem5

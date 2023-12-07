@@ -32,3 +32,5 @@ class SimpleObject(SimObject):
     type = "SimpleObject"
     cxx_header = "learning_gem5/part2/simple_object.hh"
     cxx_class = "gem5::SimpleObject"
+
+    func = Param.PyFunc("Function to call")
