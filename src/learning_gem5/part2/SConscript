@@ -31,12 +31,16 @@ SimObject('SimpleObject.py', sim_objects=['SimpleObject'])
 SimObject('HelloObject.py', sim_objects=['HelloObject', 'GoodbyeObject'])
 SimObject('SimpleMemobj.py', sim_objects=['SimpleMemobj'])
 SimObject('SimpleCache.py', sim_objects=['SimpleCache'])
+# Below is PM Function SO
+SimObject('PowerModelFunc.py', sim_objects=['PowerModelFunc'])
 
 Source('simple_object.cc')
 Source('hello_object.cc')
 Source('goodbye_object.cc')
 Source('simple_memobj.cc')
 Source('simple_cache.cc')
+# Below is PM Function SO .cc file
+Source('power_model_func.cc')
 
 DebugFlag('HelloExample', "For Learning gem5 Part 2. Simple example debug flag")
 DebugFlag('SimpleMemobj', "For Learning gem5 Part 2.")

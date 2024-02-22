@@ -13,4 +13,4 @@ class PowerModelFunc(PowerModelState):
     # It is possible to use automatic variables such as "temp"
     # You may also use stat names (relative path to the simobject)
     dyn = Param.PyFunc("Function to call for Dynamic Power")
-    stat = Param.PyFunc("Function to call for Static Power")
+    st = Param.PyFunc("Function to call for Static Power")
