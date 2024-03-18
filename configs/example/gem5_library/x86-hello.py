@@ -8,10 +8,16 @@ from gem5.components.processors.cpu_types import CPUTypes
 from gem5.resources.resource import Resource
 from gem5.simulate.simulator import Simulator
 from m5.stats.gem5stats import get_simstat
+from m5.objects import *
+from m5.objects.BranchPredictor import TAGE
+from m5.stats import *
 
 from l1l2_cache_with_pm.l1l2_cache_with_pm import (
     PrivateL1SharedL2CacheHierarchy,
 )
+
+from cpu_power_model.cpu_power_model import *
+from m5.objects import PowerState, PowerModel
 
 # Use below for debugging:
 # import pdb; pdb.set_trace()
@@ -22,6 +28,15 @@ cache_hierarchy = PrivateL1SharedL2CacheHierarchy(
 )
 memory = SingleChannelDDR3_1600("1GiB")
 processor = SimpleProcessor(cpu_type=CPUTypes.ATOMIC, num_cores=1)
+
+for cores in processor.get_cores():
+    cores.core.branchPred = LocalBP(indirectBranchPred=NULL)
+    for c in cores.core.descendants():
+        if not isinstance(c, m5.objects.BaseCPU):
+            continue
+        c.power_state.default_state = "ON"
+        c.power_model = CPU_PowerModel(c)
+
 
 # Add them to the board.
 board = SimpleBoard(
@@ -38,7 +53,4 @@ board.set_se_binary_workload(binary)
 
 # Setup the Simulator and run the simulation.
 simulator = Simulator(board=board)
-# simstats = get_simstat(board)
 simulator.run()
-# print(simstats.board.cache_hierarchy.l2cache.dumps())
-# print(simstats.board.cache_hierarchy.l2cache.tags.dataAccesses.value)

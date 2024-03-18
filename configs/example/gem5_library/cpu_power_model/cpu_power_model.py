@@ -18,7 +18,7 @@ class CPU_PowerOn(PowerModelFunc):
         self._core = core
 
         self._alu = ALU_PowerOn(core)
-        self._rf = RF_PowerOn(core)
+        self._rf = RF_PowerOn(core, issue_width=4)
         self._bp = BimodalBP_PowerOn(core)
 
         self.dyn = lambda: self.dynamic_power()
@@ -30,8 +30,17 @@ class CPU_PowerOn(PowerModelFunc):
 
     def dynamic_power(self):
         """Returns dynamic power in Watts"""
+        components = {
+            ALU_PowerOn: "ALU",
+            RF_PowerOn: "RF",
+            BimodalBP_PowerOn: "BP",
+        }
         total = 0.0
         for part in [self._alu, self._rf, self._bp]:
+            if type(part) in components:
+                print(
+                    f"{components[type(part)]} dynamic power is: {part.dynamic_power()}"
+                )
             total += part.dynamic_power()
 
         return total
