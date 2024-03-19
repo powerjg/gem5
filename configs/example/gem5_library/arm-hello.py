@@ -51,6 +51,8 @@ from gem5.components.cachehierarchies.classic.no_cache import NoCache
 from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.simulate.simulator import Simulator
 
+from cpu_power_model.cpu_power_model import CPUPowerModel
+
 # This check ensures the gem5 binary is compiled to the ARM ISA target. If not,
 # an exception will be thrown.
 requires(isa_required=ISA.ARM)
@@ -62,7 +64,11 @@ cache_hierarchy = NoCache()
 memory = SingleChannelDDR3_1600(size="32MB")
 
 # We use a simple Timing processor with one core.
-processor = SimpleProcessor(cpu_type=CPUTypes.TIMING, isa=ISA.ARM, num_cores=1)
+processor = SimpleProcessor(cpu_type=CPUTypes.O3, isa=ISA.ARM, num_cores=1)
+# Note: in the future we should put the power model in an extended core class
+processor.get_cores()[0].get_simobject().power_model = CPUPowerModel(
+    processor.get_cores()[0].get_simobject()
+)
 
 # The gem5 library simble board which can be used to run simple SE-mode
 # simulations.

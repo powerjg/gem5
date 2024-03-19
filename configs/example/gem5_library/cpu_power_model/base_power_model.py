@@ -1,35 +1,42 @@
-from m5.stats import *
+# don't use `import *` and import the specific things you need
+from m5.objects import Root
 
-
-class Base_PowerModel:
+# Class names should be in CamelCase. Also, this is an abstract base class.
+# I.e., no one should ever create an instance of this class.
+class AbstractPowerModel:
     def __init__(self, simobj):
-        self.dyn_fns = []
-        self.st_fns = []
-        self.simobj = simobj
+        # You shouldn't use a list of functions. Instead, implement the
+        # dynamic/static power functions in the sub classes
+        # using a leading underscore is a good idea so that it's not
+        # considered a simobject child
+        self._simobj = simobj
+        self.name = "AbstractPowerModel"  # should be overridden for debugging
+        # I don't like the above, but it's a little hack to make the debugging
+        # easier.
 
-    def validate_stat(self, stat):
+    # A better name is "get_stat"
+    def get_stat(self, stat):
+        """Get the value of a stat, if it exists. Otherwise, return 0.0"""
         try:
-            total = self.simobj.resolveStat(stat).total
+            total = self._simobj.resolveStat(stat).total
             return total
         except:
+            # In the future, this should be a `panic`
             print(f"{stat} not found in stats!")
             return 0.0
 
-    def dynamic_power(self):
-        total = 0.0
-        if self.dyn_fns:
-            for fn in self.dyn_fns:
-                total += fn()
-        return self.convert_to_watts(total)
+    def dynamic_power(self) -> float:
+        """Returns dynamic power in Watts"""
+        # These should not be implemented in this (abstract) base class
+        raise NotImplementedError
 
-    def static_power(self):
-        total = 0.0
-        if self.st_fns:
-            for fn in self.st_fns:
-                total += fn()
-        return self.convert_to_watts(total)
+    def static_power(self) -> float:
+        """Returns static power in Watts"""
+        # These should not be implemented in this (abstract) base class
+        raise NotImplementedError
 
-    def convert_to_watts(self, value):
+    def convert_to_watts(self, value: float) -> float:
+        """Convert energy in nanojoules to Watts"""
         time = Root.getInstance().resolveStat("simSeconds").total
         value_in_j = value * 1e-9
         return value_in_j / time
