@@ -1,7 +1,8 @@
 from m5.objects import PowerModel, PowerModelFunc
+from m5.objects import BaseMinorCPU, BaseO3CPU
 
-from .alu_power_model import O3ALUPower
-from .rf_power_model import O3RFPower
+from .alu_power_model import MinorALUPower
+from .rf_power_model import MinorRFPower
 from .bimodal_bp_power_model import BimodalBPPower
 
 """
@@ -16,9 +17,8 @@ class CPUPowerOn(PowerModelFunc):
     def __init__(self, core):
         """core must be an O3CPU core"""
         super().__init__()
-
-        self._alu = O3ALUPower(core)
-        self._rf = O3RFPower(core, issue_width=4)
+        self._alu = MinorALUPower(core)
+        self._rf = MinorRFPower(core, issue_width=4)
         self._bp = BimodalBPPower(core)
 
         self.dyn = self.dynamic_power

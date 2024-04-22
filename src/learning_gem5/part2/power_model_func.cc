@@ -1,6 +1,7 @@
 #include "learning_gem5/part2/power_model_func.hh"
 
-#include <iostream>
+#include "base/trace.hh"
+#include "debug/PowerModelFunc.hh"
 
 namespace gem5{
 

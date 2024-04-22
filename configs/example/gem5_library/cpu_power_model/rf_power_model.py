@@ -1,4 +1,4 @@
-from m5.objects import BaseO3CPU
+from m5.objects import BaseMinorCPU
 
 # Only import things you need
 
@@ -6,10 +6,10 @@ from m5.objects import BaseO3CPU
 from .base_power_model import AbstractPowerModel
 
 
-class O3RFPower(AbstractPowerModel):
+class MinorRFPower(AbstractPowerModel):
     # avoid the use of default values
-    def __init__(self, o3cpu: BaseO3CPU, issue_width: int):
-        super().__init__(o3cpu)
+    def __init__(self, minorcpu: BaseMinorCPU, issue_width: int):
+        super().__init__(minorcpu)
         # _rf isn't really needed since you have `_simobj`
         self._issue_width = issue_width
         self.name = "RF"
@@ -20,20 +20,26 @@ class O3RFPower(AbstractPowerModel):
 
     def dynamic_power(self) -> float:
         energy = self.int_energy() + self.fp_energy() + self.misc_energy()
+        print(
+            f"{self.int_energy()} + {self.fp_energy()} + {self.misc_energy()}"
+        )
         return self.convert_to_watts(energy)
 
     def int_energy(self) -> float:
-        reads = self.get_stat("executeStats0.numIntRegReads")
-        writes = self.get_stat("executeStats0.numIntRegWrites")
-
+        reads = self.get_stat("numIntRegReads")
+        writes = self.get_stat("numIntRegWrites")
+        # reads = self.get_stat("executeStats0.numIntRegReads")
+        # writes = self.get_stat("executeStats0.numIntRegWrites")
         return (
             reads * self.rf_int_read_act_energy()
             + writes * self.rf_int_write_act_energy()
         )
 
     def fp_energy(self) -> float:
-        reads = self.get_stat("executeStats0.numFpRegReads")
-        writes = self.get_stat("executeStats0.numFpRegWrites")
+        reads = self.get_stat("numFpRegReads")
+        writes = self.get_stat("numFpRegWrites")
+        # reads = self.get_stat("executeStats0.numFpRegReads")
+        # writes = self.get_stat("executeStats0.numFpRegWrites")
 
         return (
             reads * self.rf_fp_read_act_energy()
@@ -41,8 +47,10 @@ class O3RFPower(AbstractPowerModel):
         )
 
     def misc_energy(self) -> float:
-        reads = self.get_stat("executeStats0.numMiscRegReads")
-        writes = self.get_stat("executeStats0.numMiscRegWrites")
+        reads = self.get_stat("numMiscRegReads")
+        writes = self.get_stat("numMiscRegWrites")
+        # reads = self.get_stat("executeStats0.numMiscRegReads")
+        # writes = self.get_stat("executeStats0.numMiscRegWrites")
 
         return (
             reads * self.rf_misc_read_act_energy()

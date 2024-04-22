@@ -5,7 +5,8 @@ from gem5.components.cachehierarchies.classic.private_l1_cache_hierarchy import 
 from gem5.components.memory.single_channel import SingleChannelDDR3_1600
 from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.components.processors.cpu_types import CPUTypes
-from gem5.resources.resource import Resource
+from gem5.resources.resource import Resource, BinaryResource, CustomResource
+from gem5.resources.workload import CustomWorkload
 from gem5.simulate.simulator import Simulator
 from m5.stats.gem5stats import get_simstat
 from m5.objects import *
@@ -18,6 +19,7 @@ from l1l2_cache_with_pm.l1l2_cache_with_pm import (
 
 from cpu_power_model.cpu_power_model import *
 from m5.objects import PowerState, PowerModel
+import os
 
 # Use below for debugging:
 # import pdb; pdb.set_trace()
@@ -27,7 +29,7 @@ cache_hierarchy = PrivateL1SharedL2CacheHierarchy(
     l1d_size="32kB", l1i_size="32kB", l2_size="64KiB"
 )
 memory = SingleChannelDDR3_1600("1GiB")
-processor = SimpleProcessor(cpu_type=CPUTypes.ATOMIC, num_cores=1)
+processor = SimpleProcessor(cpu_type=CPUTypes.O3, num_cores=1)
 
 for cores in processor.get_cores():
     cores.core.branchPred = LocalBP(indirectBranchPred=NULL)
@@ -35,7 +37,7 @@ for cores in processor.get_cores():
         if not isinstance(c, m5.objects.BaseCPU):
             continue
         c.power_state.default_state = "ON"
-        c.power_model = CPU_PowerModel(c)
+        c.power_model = CPUPowerModel(c)
 
 
 # Add them to the board.
@@ -45,8 +47,6 @@ board = SimpleBoard(
     memory=memory,
     cache_hierarchy=cache_hierarchy,
 )
-print(board.path())
-
 # Set the workload.
 binary = Resource("x86-hello64-static")
 board.set_se_binary_workload(binary)

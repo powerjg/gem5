@@ -92,6 +92,7 @@ Execute::Execute(const std::string &name_,
             ExecuteThreadInfo(params.executeCommitLimit)),
     interruptPriority(0),
     issuePriority(0),
+    stats(&cpu_),
     commitPriority(0)
 {
     if (commitLimit < 1) {
@@ -873,6 +874,22 @@ Execute::doInstCommitAccounting(MinorDynInstPtr inst)
     }
     thread->numOp++;
     thread->threadStats.numOps++;
+    // Begin Power Model Stats
+    if (inst->isInst())
+    {
+            if (inst->staticInst->isVector())
+            {
+                    stats.vecAluAccesses++;
+                    cpu.executeStats[inst->id.threadId]->numVecAluAccesses++;
+            } else if (inst->staticInst->isFloating()){
+                    stats.fpAluAccesses++;
+                    cpu.executeStats[inst->id.threadId]->numFpAluAccesses++;
+            } else if (inst->staticInst->isInteger()){
+                    stats.intAluAccesses++;
+                    cpu.executeStats[inst->id.threadId]->numIntAluAccesses++;
+            }
+    }
+    // End Power Model Stats
     cpu.commitStats[inst->id.threadId]->numOps++;
     cpu.commitStats[inst->id.threadId]
         ->committedInstType[inst->staticInst->opClass()]++;
@@ -1890,6 +1907,24 @@ MinorCPU::MinorCPUPort &
 Execute::getDcachePort()
 {
     return lsq.getDcachePort();
+}
+
+Execute::ExecuteStats::ExecuteStats(MinorCPU *cpu)
+        : statistics::Group(cpu, "execute"),
+        ADD_STAT(intAluAccesses, statistics::units::Count::get(),
+                "Number of integer alu accesses"),
+       ADD_STAT(fpAluAccesses, statistics::units::Count::get(),
+                "Number of floating point alu accesses"),
+       ADD_STAT(vecAluAccesses, statistics::units::Count::get(),
+                "Number of vector alu accesses")
+{
+        intAluAccesses
+                .flags(statistics::total);
+        fpAluAccesses
+                .flags(statistics::total);
+        vecAluAccesses
+                .flags(statistics::total);
+
 }
 
 } // namespace minor

@@ -127,6 +127,17 @@ class Execute : public Named
     /** The execution functional units */
     std::vector<FUPipeline *> funcUnits;
 
+    /** Temporary Stats for ALU Accesses
+     * (minor doesn't incr. these by default? */
+    struct ExecuteStats : public statistics::Group
+        {
+                ExecuteStats(MinorCPU *cpu);
+                statistics::Scalar intAluAccesses;
+                statistics::Scalar fpAluAccesses;
+                statistics::Scalar vecAluAccesses;
+
+        } stats;
+
   public: /* Public for Pipeline to be able to pass it to Decode */
     std::vector<InputBuffer<ForwardInstData>> inputBuffer;
 

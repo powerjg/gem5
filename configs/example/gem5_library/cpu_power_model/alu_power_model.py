@@ -1,11 +1,12 @@
-from m5.objects import BaseO3CPU
+from m5.objects import BaseMinorCPU
 from .base_power_model import AbstractPowerModel
 
 
-class O3ALUPower(AbstractPowerModel):
-    def __init__(self, o3cpu: BaseO3CPU):
-        super().__init__(o3cpu)
+class MinorALUPower(AbstractPowerModel):
+    def __init__(self, minorcpu: BaseMinorCPU):
+        super().__init__(minorcpu)
         self.name = "ALU"
+        self._cpu = minorcpu
 
     def static_power(self) -> float:
         # no need for documentation if you're overriding the base class
@@ -20,15 +21,15 @@ class O3ALUPower(AbstractPowerModel):
 
     def int_energy(self) -> float:
         # Note: the stat below doesn't exist
-        int_accesses = self.get_stat("executeStats0.numIntAluAccesses")
+        int_accesses = self.get_stat("numIntAluAccesses")
         return int_accesses * self.int_alu_act_energy()
 
     def fp_energy(self) -> float:
-        fp_accesses = self.get_stat("executeStats0.numFpAluAccesses")
+        fp_accesses = self.get_stat("numFpAluAccesses")
         return fp_accesses * self.fp_alu_act_energy()
 
     def vec_energy(self) -> float:
-        vec_accesses = self.get_stat("executeStats0.numFpAluAccesses")
+        vec_accesses = self.get_stat("numVecAluAccesses")
         return vec_accesses * self.vec_alu_act_energy()
 
     def fp_alu_act_energy(self) -> float:
