@@ -17,9 +17,7 @@ from l1l2_cache_with_pm.l1l2_cache_with_pm import (
     PrivateL1SharedL2CacheHierarchy,
 )
 
-from cpu_power_model.cpu_power_model import *
-from m5.objects import PowerState, PowerModel
-import os
+from cpu_power_model.my_in_order_processor import MyInOrderProcessor
 
 # Use below for debugging:
 # import pdb; pdb.set_trace()
@@ -29,16 +27,7 @@ cache_hierarchy = PrivateL1SharedL2CacheHierarchy(
     l1d_size="32kB", l1i_size="32kB", l2_size="64KiB"
 )
 memory = SingleChannelDDR3_1600("1GiB")
-processor = SimpleProcessor(cpu_type=CPUTypes.O3, num_cores=1)
-
-for cores in processor.get_cores():
-    cores.core.branchPred = LocalBP(indirectBranchPred=NULL)
-    for c in cores.core.descendants():
-        if not isinstance(c, m5.objects.BaseCPU):
-            continue
-        c.power_state.default_state = "ON"
-        c.power_model = CPUPowerModel(c)
-
+processor = MyInOrderProcessor()
 
 # Add them to the board.
 board = SimpleBoard(

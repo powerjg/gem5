@@ -1,8 +1,8 @@
 from m5.objects import PowerModel, PowerModelFunc
 from m5.objects import BaseMinorCPU, BaseO3CPU
 
-from .alu_power_model import MinorALUPower
-from .rf_power_model import MinorRFPower
+from .minor_alu_power_model import MinorALUPower
+from .minor_rf_power_model import MinorRFPower
 from .bimodal_bp_power_model import BimodalBPPower
 
 """
@@ -12,10 +12,9 @@ Main reason is to limit the amount of fns we override/redefine
 
 
 class CPUPowerOn(PowerModelFunc):
-    """Power model for an O3CPU"""
+    """Power model for an Minor CPU."""
 
-    def __init__(self, core):
-        """core must be an O3CPU core"""
+    def __init__(self, core, branch_pred):
         super().__init__()
         self._alu = MinorALUPower(core)
         self._rf = MinorRFPower(core, issue_width=4)
@@ -49,12 +48,12 @@ class CPUPowerOff(PowerModelFunc):
         self.st = lambda: 0.0
 
 
-class CPUPowerModel(PowerModel):
-    def __init__(self, core):
+class MinorPowerModel(PowerModel):
+    def __init__(self, core, branch_pred):
         super().__init__()
         # Choose a power model for every power state
         self.pm = [
-            CPUPowerOn(core),  # ON
+            CPUPowerOn(core, branch_pred),  # ON
             CPUPowerOff(),  # CLK_GATED
             CPUPowerOff(),  # SRAM_RETENTION
             CPUPowerOff(),  # OFF

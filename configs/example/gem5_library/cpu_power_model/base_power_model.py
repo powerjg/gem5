@@ -54,24 +54,12 @@ class AbstractPowerModel:
         # using a leading underscore is a good idea so that it's not
         # considered a simobject child
         self._simobj = simobj
-        self.name = "AbstractPowerModel"  # should be overridden for debugging
-        # I don't like the above, but it's a little hack to make the debugging
-        # easier.
 
     # A better name is "get_stat"
     def get_stat(self, stat):
         """Get the value of a stat, if it exists. Otherwise, return 0.0"""
-        stats_dictionary = {0: minor_stats, 1: minor_stats, 2: o3_stats}
-        try:
-            target_stat = stats_dictionary[self.check_cpu_type(self._simobj)][
-                stat
-            ]
-            total = self._simobj.resolveStat(target_stat).total
-            return total
-        except KeyError:
-            # In the future, this should be a `panic`
-            print(f"{stat} not found in stats!")
-            return 0.0
+        print(f"Getting stat: {stat} for {self._simobj.name}")
+        return self._simobj.resolveStat(stat).total
 
     def dynamic_power(self) -> float:
         """Returns dynamic power in Watts"""
@@ -82,14 +70,6 @@ class AbstractPowerModel:
         """Returns static power in Watts"""
         # These should not be implemented in this (abstract) base class
         raise NotImplementedError
-
-    def check_cpu_type(self, core):
-        if isinstance(core, BaseMinorCPU):
-            return 0
-        elif isinstance(core, BaseSimpleCPU):
-            return 1
-        elif isinstance(core, BaseO3CPU):
-            return 2
 
     def convert_to_watts(self, value: float) -> float:
         """Convert energy in nanojoules to Watts"""

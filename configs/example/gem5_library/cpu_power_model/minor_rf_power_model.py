@@ -26,20 +26,16 @@ class MinorRFPower(AbstractPowerModel):
         return self.convert_to_watts(energy)
 
     def int_energy(self) -> float:
-        reads = self.get_stat("numIntRegReads")
-        writes = self.get_stat("numIntRegWrites")
-        # reads = self.get_stat("executeStats0.numIntRegReads")
-        # writes = self.get_stat("executeStats0.numIntRegWrites")
+        reads = self.get_stat("executeStats0.numIntRegReads")
+        writes = self.get_stat("executeStats0.numIntRegWrites")
         return (
             reads * self.rf_int_read_act_energy()
             + writes * self.rf_int_write_act_energy()
         )
 
     def fp_energy(self) -> float:
-        reads = self.get_stat("numFpRegReads")
-        writes = self.get_stat("numFpRegWrites")
-        # reads = self.get_stat("executeStats0.numFpRegReads")
-        # writes = self.get_stat("executeStats0.numFpRegWrites")
+        reads = self.get_stat("executeStats0.numFpRegReads")
+        writes = self.get_stat("executeStats0.numFpRegWrites")
 
         return (
             reads * self.rf_fp_read_act_energy()
@@ -47,10 +43,8 @@ class MinorRFPower(AbstractPowerModel):
         )
 
     def misc_energy(self) -> float:
-        reads = self.get_stat("numMiscRegReads")
-        writes = self.get_stat("numMiscRegWrites")
-        # reads = self.get_stat("executeStats0.numMiscRegReads")
-        # writes = self.get_stat("executeStats0.numMiscRegWrites")
+        reads = self.get_stat("executeStats0.numMiscRegReads")
+        writes = self.get_stat("executeStats0.numMiscRegWrites")
 
         return (
             reads * self.rf_misc_read_act_energy()

@@ -31,30 +31,30 @@ class BimodalBPPower(AbstractPowerModel):
 
     def update_energy(self) -> float:
         # btb_updates = self.get_stat("branchPred.BTBUpdates")
-        btb_updates = self.get_stat("BTBUpdates")
+        btb_updates = self.get_stat("branchPred.BTBUpdates")
         return btb_updates * self.btb_update_act_energy()
 
     def total_energy_btb_hits(self) -> float:
-        btb_hits = self.get_stat("BTBHits")
+        btb_hits = self.get_stat("branchPred.BTBHits")
         return btb_hits * self.btb_hits_act_energy()
 
     def total_energy_btb_misses(self) -> float:
         # btb_hits = self.get_stat("branchPred.BTBHits")
         # btb_lookups = self.get_stat("branchPred.BTBLookups")
-        btb_hits = self.get_stat("BTBHits")
-        btb_lookups = self.get_stat("BTBLookups")
+        btb_hits = self.get_stat("branchPred.BTBHits")
+        btb_lookups = self.get_stat("branchPred.BTBLookups")
         btb_misses = btb_lookups - btb_hits
         return btb_misses * self.btb_misses_act_energy()
 
     def total_energy_cond_predict(self) -> float:
-        cond_mispredicts = self.get_stat("condMispredicted")
-        cond_predictions = self.get_stat("condPredicted")
+        cond_mispredicts = self.get_stat("branchPred.condMispredicted")
+        cond_predictions = self.get_stat("branchPred.condPredicted")
         cond_correct = cond_mispredicts - cond_predictions
 
         return cond_mispredicts * self.cond_predict_act_energy()
 
     def total_energy_cond_mispredict(self) -> float:
-        cond_mispredicts = self.get_stat("condMispredicted")
+        cond_mispredicts = self.get_stat("branchPred.condMispredicted")
         return cond_mispredicts * self.cond_mispredict_act_energy()
 
     def btb_hits_act_energy(self) -> float:

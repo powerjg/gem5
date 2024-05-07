@@ -21,15 +21,15 @@ class MinorALUPower(AbstractPowerModel):
 
     def int_energy(self) -> float:
         # Note: the stat below doesn't exist
-        int_accesses = self.get_stat("numIntAluAccesses")
+        int_accesses = self.get_stat("executeStats0.numIntAluAccesses")
         return int_accesses * self.int_alu_act_energy()
 
     def fp_energy(self) -> float:
-        fp_accesses = self.get_stat("numFpAluAccesses")
+        fp_accesses = self.get_stat("executeStats0.numFpAluAccesses")
         return fp_accesses * self.fp_alu_act_energy()
 
     def vec_energy(self) -> float:
-        vec_accesses = self.get_stat("numVecAluAccesses")
+        vec_accesses = self.get_stat("executeStats0.numVecAluAccesses")
         return vec_accesses * self.vec_alu_act_energy()
 
     def fp_alu_act_energy(self) -> float:
