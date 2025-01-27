@@ -39,12 +39,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "sim/init_signals.hh"
-
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include <csignal>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -53,12 +54,15 @@
 
 #endif
 
+#include "sim/init_signals.hh"
+
 #include "base/atomicio.hh"
 #include "base/cprintf.hh"
 #include "base/logging.hh"
 #include "sim/async.hh"
 #include "sim/backtrace.hh"
 #include "sim/eventq.hh"
+#include "sim/sim_exit.hh"
 
 namespace gem5
 {
@@ -180,6 +184,77 @@ ioHandler(int sigtype)
     getEventQueue(0)->wakeup();
 }
 
+// Handle signals from external processes
+static void
+externalProcessHandler(int sigtype)
+{
+    async_event = true;
+
+    const char* shared_mem_name = "shared_gem5_signal_mem";
+    const std::size_t shared_mem_size = 4096;
+
+    int shm_fd = shm_open(shared_mem_name, O_RDONLY, 0666); //0666 = rw-rw-rw-
+    if (shm_fd == -1) {
+        std::cerr << "Error: Unable to open shared memory" << std::endl;
+        return;
+    }
+
+    void* shm_ptr = mmap(0, shared_mem_size, PROT_READ, MAP_SHARED, shm_fd, 0);
+    if (shm_ptr == MAP_FAILED) {
+        std::cerr << "Error: Unable to map shared memory" << std::endl;
+        close(shm_fd);
+        return;
+    }
+
+    char full_payload[shared_mem_size];
+    std::memcpy(full_payload, shm_ptr, shared_mem_size);
+    full_payload[shared_mem_size - 1] = '\0';  // Ensure null-termination
+
+    std::cout << "Received signal from external process with payload: '"
+        << full_payload << "'" << std::endl;
+
+    // process payload json with string processing
+    std::string full_payload_str = full_payload;
+    std::map<std::string, std::string> payload_map;
+
+    //get the hypercall id
+    std::size_t payload_pos = 0;
+    std::string hypercall_id_str = extractStringFromJSON(full_payload_str,
+        "\"id\":", ",", payload_pos);
+    uint64_t hypercall_id = std::stoi(hypercall_id_str);
+
+    // parse the payload. Start looking for key-value pairs after `"payload":`
+    std::string payload_key = "\"payload\":";
+    payload_pos = full_payload_str.find(payload_key) + payload_key.length();
+
+    while (full_payload_str.find('"', payload_pos) != std::string::npos){
+        std::string key = extractStringFromJSON(full_payload_str, "\"", "\":",
+            payload_pos);
+        std::string value = extractStringFromJSON(full_payload_str, "\"", "\"",
+            payload_pos);
+        payload_map[key] = value;
+    }
+
+    munmap(shm_ptr, shared_mem_size);
+    close(shm_fd);
+    shm_unlink(shared_mem_name);
+
+    exitSimulationLoopNow(hypercall_id, payload_map);
+}
+
+std::string
+extractStringFromJSON(std::string& full_str, std::string start_str,
+    std::string end_str, std::size_t& search_start)
+{
+    std::size_t start = full_str.find(start_str, search_start) +
+        start_str.size();
+    std::size_t end = full_str.find(end_str, start);
+
+    // move position in payload past current key or value
+    search_start = end + end_str.size();
+    return (full_str.substr(start, end - start));
+}
+
 /*
  * M5 can do several special things when various signals are sent.
  * None are mandatory.
@@ -214,6 +289,11 @@ initSignals()
     // Install a SIGIO handler to handle asynchronous file IO. See the
     // PollQueue class.
     installSignalHandler(SIGIO, ioHandler);
+}
+
+void initSigRtmin()
+{
+    installSignalHandler(SIGRTMIN, externalProcessHandler);
 }
 
 struct sigaction old_int_sa;
