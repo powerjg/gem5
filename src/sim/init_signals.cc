@@ -190,16 +190,19 @@ externalProcessHandler(int sigtype)
 {
     async_event = true;
 
-    const char* shared_mem_name = "shared_gem5_signal_mem";
+    std::string shared_mem_name_str = "shared_gem5_signal_mem_" +
+        std::to_string(getpid());
+    const char* shared_mem_name = shared_mem_name_str.c_str();
     const std::size_t shared_mem_size = 4096;
 
-    int shm_fd = shm_open(shared_mem_name, O_RDONLY, 0666); //0666 = rw-rw-rw-
+    int shm_fd = shm_open(shared_mem_name, O_RDWR, 0666); //0666 = rw-rw-rw-
     if (shm_fd == -1) {
         std::cerr << "Error: Unable to open shared memory" << std::endl;
         return;
     }
 
-    void* shm_ptr = mmap(0, shared_mem_size, PROT_READ, MAP_SHARED, shm_fd, 0);
+    void* shm_ptr = mmap(0, shared_mem_size, PROT_READ | PROT_WRITE,
+        MAP_SHARED, shm_fd, 0);
     if (shm_ptr == MAP_FAILED) {
         std::cerr << "Error: Unable to map shared memory" << std::endl;
         close(shm_fd);
@@ -235,9 +238,14 @@ externalProcessHandler(int sigtype)
         payload_map[key] = value;
     }
 
+    // put a "done" message into the shared memory so the transmitter knows to
+    // close and unlink the memory on its end.
+    char done_msg[shared_mem_size] = "done";
+    done_msg[shared_mem_size - 1] = '\0';  // Ensure null-termination
+    std::memcpy(shm_ptr, done_msg, sizeof(done_msg));
+
     munmap(shm_ptr, shared_mem_size);
     close(shm_fd);
-    shm_unlink(shared_mem_name);
 
     exitSimulationLoopNow(hypercall_id, payload_map);
 }

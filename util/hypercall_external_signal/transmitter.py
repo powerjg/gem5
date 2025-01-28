@@ -5,28 +5,44 @@ import os
 import signal
 import sys
 from multiprocessing import shared_memory
+from time import sleep
 from typing import Optional
-
-SHARED_MEM_NAME = "shared_gem5_signal_mem"
-SHARED_MEM_SIZE = 4096
 
 
 def send_signal(pid: int, id: int, payload: str) -> None:
+    shared_mem_name = "shared_gem5_signal_mem_" + str(pid)
+    shared_mem_size = 4096
     try:
         shm = shared_memory.SharedMemory(
-            name=SHARED_MEM_NAME, create=True, size=SHARED_MEM_SIZE
+            name=shared_mem_name, create=True, size=shared_mem_size
         )
     except FileExistsError:
-        shm = shared_memory.SharedMemory(name=SHARED_MEM_NAME)
+        shm = shared_memory.SharedMemory(name=shared_mem_name)
 
-    shm.buf[:SHARED_MEM_SIZE] = b"\x00" * SHARED_MEM_SIZE
+    shm.buf[:shared_mem_size] = b"\x00" * shared_mem_size
     final_payload = create_json(id, payload)
     shm.buf[: len(final_payload.encode())] = final_payload.encode()
-    os.kill(pid, signal.SIGRTMIN)
+    try:
+        os.kill(pid, signal.SIGRTMIN)
+    except ProcessLookupError:
+        print(
+            "Process does not exist! Check that you are using the correct PID."
+        )
+        shm.close()
+        shm.unlink()
+        sys.exit(1)
 
     print(f"Sent signal SIGRTMIN to PID {pid} with payload: '{final_payload}'")
 
+    while bytes(shm.buf[:shared_mem_size]).decode().strip("\x00") != "done":
+        print("Waiting for gem5 to finish using shared memory...")
+        sleep(1)
+    print("Done message received")
     shm.close()
+    try:
+        shm.unlink()
+    except FileNotFoundError:
+        pass
 
 
 if __name__ == "__main__":
