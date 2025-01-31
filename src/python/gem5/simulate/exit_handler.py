@@ -1,9 +1,13 @@
-from abc import abstractmethod
+from abc import (
+    ABCMeta,
+    abstractmethod,
+)
 from pathlib import Path
 from typing import (
     Any,
     Dict,
     Optional,
+    Type,
 )
 
 import m5
@@ -14,9 +18,38 @@ from gem5.simulate.exit_event import ExitEvent
 from gem5.utils.override import overrides
 
 
-class ExitHandler:
+class ExitHandlerMeta(ABCMeta):
+    """Metaclass for ExitHandler that automatically registers subclasses"""
+
+    def __new__(mcs, name, bases, attrs, hypercall_num: int = None) -> Any:
+        cls = super().__new__(mcs, name, bases, attrs)
+        # Don't register the base ExitHandler class itself
+        if name != "ExitHandler":
+            # Extract ID from class name, e.g. CheckpointExitHandler -> Checkpoint
+            assert (
+                hypercall_num is not None
+            ), "Hypercall number must be provided"
+            ExitHandler._handler_map[hypercall_num] = cls
+
+        return cls
+
+
+class ExitHandler(metaclass=ExitHandlerMeta):
+
+    _handler_map: Dict[str, Type["ExitHandler"]] = {}
+
     def __init__(self, payload: Dict[str, str]) -> None:
         self._payload = payload
+
+    @classmethod
+    def get_handler_id(cls) -> int:
+        """Returns the ID of the exit handler"""
+        return cls._handler_id
+
+    @classmethod
+    def get_handler_map(cls) -> Dict[str, Type["ExitHandler"]]:
+        """Returns the mapping of exit handler IDs to handler classes"""
+        return cls._handler_map
 
     def handle(self, simulator: "Simulator") -> bool:
         self._process(simulator)
@@ -35,7 +68,7 @@ class ExitHandler:
         )
 
 
-class ClassicGeneratorExitHandler(ExitHandler):
+class ClassicGeneratorExitHandler(ExitHandler, hypercall_num=0):
 
     def __init__(self, payload: Dict[str, str]) -> None:
         super().__init__(payload)
@@ -98,7 +131,7 @@ class ClassicGeneratorExitHandler(ExitHandler):
         return self._exit_on_completion
 
 
-class ScheduledExitEventHandler(ExitHandler):
+class ScheduledExitEventHandler(ExitHandler, hypercall_num=4):
     """A handler designed to be the default for  an Exit scheduled to occur
     at a specified tick. For example, these Exit exits can be triggered through be
     src/python/m5/simulate.py's `scheduleTickExitFromCurrent` and
@@ -147,7 +180,7 @@ class ScheduledExitEventHandler(ExitHandler):
         return True
 
 
-class KernelBootedExitHandler(ExitHandler):
+class KernelBootedExitHandler(ExitHandler, hypercall_num=1):
     @overrides(ExitHandler)
     def _process(self, simulator: "Simulator") -> None:
         print("First exit: kernel booted")
@@ -157,7 +190,7 @@ class KernelBootedExitHandler(ExitHandler):
         return False
 
 
-class AfterBootExitHandler(ExitHandler):
+class AfterBootExitHandler(ExitHandler, hypercall_num=2):
     @overrides(ExitHandler)
     def _process(self, simulator: "Simulator") -> None:
         print("Second exit: Started `after_boot.sh` script")
@@ -168,7 +201,7 @@ class AfterBootExitHandler(ExitHandler):
         return False
 
 
-class AfterBootScriptExitHandler(ExitHandler):
+class AfterBootScriptExitHandler(ExitHandler, hypercall_num=3):
     @overrides(ExitHandler)
     def _process(self, simulator: "Simulator") -> None:
         print("Third exit: Finished `after_boot.sh` script")
