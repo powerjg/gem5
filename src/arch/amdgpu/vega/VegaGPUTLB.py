@@ -32,12 +32,31 @@ from m5.objects.AMDGPU import AMDGPUDevice
 from m5.objects.ClockedObject import ClockedObject
 from m5.objects.IndexingPolicies import (
     BaseIndexingPolicy,
-    SetAssociative,
 )
 from m5.objects.ReplacementPolicies import LRURP
 from m5.params import *
 from m5.proxy import *
 from m5.SimObject import SimObject
+
+
+class VegaPWCIndexingPolicy(BaseIndexingPolicy):
+    """
+    This class implements the GPU page walk cache indexing policy.
+    This policy is specific to the GPU page table entries.
+    """
+
+    type = "VegaPWCIndexingPolicy"
+    cxx_class = "gem5::VegaISA::VegaPWCIndexingPolicy"
+    cxx_header = "arch/amdgpu/vega/page_walk_cache.hh"
+
+    entries = Param.Int(
+        Parent.page_walk_cache_entries,
+        "Number of entries in the page walk cache",
+    )
+    assoc = Param.Int(
+        Parent.page_walk_cache_entries,
+        "Associativity of the page walk cache",
+    )
 
 
 class VegaPagetableWalker(ClockedObject):
@@ -47,15 +66,13 @@ class VegaPagetableWalker(ClockedObject):
     port = RequestPort("Port for the hardware table walker")
     system = Param.System(Parent.any, "system object")
 
-    page_walk_cache_entires = Param.Int(64, "Page walk cache entries")
+    page_walk_cache_entries = Param.Int(64, "Page walk cache entries")
     pwc_replacement_policy = Param.BaseReplacementPolicy(
         LRURP(), "Replacement policy of the PWC"
     )
-    pwc_indexing_policy = Param.SetAssociative(
-        SetAssociative(
-            assoc=Parent.page_walk_cache_entires, size="512", entry_size=8
-        ),
-        "Indexing policy of the PWC, should be SetAssociative.",
+    pwc_indexing_policy = Param.VegaPWCIndexingPolicy(
+        VegaPWCIndexingPolicy(),
+        "Indexing policy of the PWC. Must be GPU PWC specific",
     )
     enable_pwc = Param.Bool(True, "Enable page walk cache")
 

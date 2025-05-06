@@ -385,11 +385,10 @@ bool Walker::sendTiming(WalkerState* sending_walker, PacketPtr pkt)
     pkt->pushSenderState(walker_state);
 
     // If hit, send the response pkt immediately.
-    // PageTableEntry *entry = pwcLookup(pkt->getAddr());
     PWCEntry *entry = pwc.findEntry(pkt->getAddr());
     if (entry != nullptr) {
         DPRINTF(GPUPTWalker, "PTE found in buffer, skipping timing request.");
-        pkt->setLE<uint64_t>((pwc.accessEntry(pkt->getAddr()))->pteEntry);
+        pkt->setLE<uint64_t>(entry->pteEntry);
 
         recvTimingResp(pkt);
 

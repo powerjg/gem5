@@ -34,13 +34,11 @@
 
 #include <vector>
 
+#include "arch/amdgpu/vega/page_walk_cache.hh"
 #include "arch/amdgpu/vega/pagetable.hh"
 #include "arch/amdgpu/vega/tlb.hh"
-#include "base/cache/associative_cache.hh"
 #include "base/types.hh"
 #include "debug/GPUPTWalker.hh"
-#include "mem/cache/replacement_policies/replaceable_entry.hh"
-#include "mem/cache/tags/indexing_policies/set_associative.hh"
 #include "mem/packet.hh"
 #include "params/VegaPagetableWalker.hh"
 #include "sim/clocked_object.hh"
@@ -58,63 +56,7 @@ class Walker : public ClockedObject
 {
   protected:
 
-    // Page walk cache entry
-    struct PWCEntry : public ReplaceableEntry
-    {
-      public:
-        using IndexingPolicy = SetAssociative;
-        using KeyType = Addr;
-
-        PageTableEntry pteEntry;
-        Addr paddr;
-
-        bool valid;
-
-        void
-        invalidate()
-        {
-          valid = false;
-        }
-
-        void insert(const KeyType &key) {}
-        bool isValid() const { return valid; }
-        bool
-        match(const KeyType &key) const
-        {
-          return valid && paddr == key;
-        }
-    };
-
-    // Page walk cache
-    class PageWalkCache : public AssociativeCache<PWCEntry>
-    {
-      public:
-        using AssociativeCache<PWCEntry>::AssociativeCache;
-        using AssociativeCache<PWCEntry>::accessEntry;
-
-        PWCEntry* accessEntry(const KeyType &key) override
-        {
-          auto entry = findEntry(key);
-          accessEntry(entry);
-          return entry;
-        }
-        PWCEntry* findEntry(const KeyType &key) const override
-        {
-          for (auto candidate : indexingPolicy->getPossibleEntries(key)) {
-            auto entry = static_cast<PWCEntry*>(candidate);
-            if (entry->match(key))
-              return entry;
-          }
-          return nullptr;
-        }
-        void insert(const KeyType &key, const PageTableEntry &pte_entry) {
-          PWCEntry *vict = findVictim(key);
-          vict->pteEntry = pte_entry;
-          vict->paddr = key;
-          vict->valid = true;
-          insertEntry(key, vict);
-        }
-    } pwc;
+    PageWalkCache pwc;
 
     // Port for accessing memory
     class WalkerPort : public RequestPort
@@ -258,8 +200,8 @@ class Walker : public ClockedObject
 
     Walker(const VegaPagetableWalkerParams &p)
       : ClockedObject(p),
-        pwc(name()+".pwc", p.page_walk_cache_entires,
-            p.page_walk_cache_entires, p.pwc_replacement_policy,
+        pwc(name()+".pwc", p.page_walk_cache_entries,
+            p.page_walk_cache_entries, p.pwc_replacement_policy,
             p.pwc_indexing_policy),
         port(name() + ".port", this),
         funcState(this, nullptr, true),
