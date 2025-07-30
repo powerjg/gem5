@@ -1116,15 +1116,10 @@ TEST_F(RegisterBankTest, AddRegistersAtOffsetDeath)
     gtestLogOutput.str("");
 
     auto base = emptyBank.base();
-    EXPECT_ANY_THROW(
+    EXPECT_DEATH(
         emptyBank.addRegistersAt<RegisterBankLE::RegisterRao>(
-            {{base + 0x0, reg0},
-             {base + 0x2, reg1},
-             {base + 0x4, reg2}}));
-
-    std::string actual = gtestLogOutput.str();
-    EXPECT_THAT(actual, HasSubstr("Overlapping register"));
-    EXPECT_THAT(actual, HasSubstr("reg1"));
+            {{base + 0x0, reg0}, {base + 0x2, reg1}, {base + 0x4, reg2}}),
+        "Overlapping register added to the bank: reg1");
 }
 
 /**
@@ -1190,23 +1185,16 @@ TEST_F(RegisterBankTest, AddRegistersAtOffsetSparse)
 TEST_F(RegisterBankTest, BadRegisterOffsetDeath)
 {
     gtestLogOutput.str("");
-    EXPECT_ANY_THROW(emptyBank.addRegisters({{0xabcd, reg0}, reg1}));
-
-    std::string actual = gtestLogOutput.str();
-    EXPECT_THAT(actual, HasSubstr("empty.reg0"));
-    EXPECT_THAT(actual, HasSubstr("to be 0xabcd"));
-    EXPECT_THAT(actual, HasSubstr("is 0x12345"));
+    EXPECT_DEATH(
+        emptyBank.addRegisters({{0xabcd, reg0}, reg1}),
+        "Expected offset of register empty\\.reg0 to be 0xabcd, is 0x12345");
 }
 
 TEST_F(RegisterBankTest, BadBankOffsetDeath)
 {
     gtestLogOutput.str("");
-    EXPECT_ANY_THROW(emptyBank.addRegisters({{0xabcd}, reg0}));
-
-    std::string actual = gtestLogOutput.str();
-    EXPECT_THAT(actual, HasSubstr("empty "));
-    EXPECT_THAT(actual, HasSubstr("to be 0xabcd"));
-    EXPECT_THAT(actual, HasSubstr("is 0x12345"));
+    EXPECT_DEATH(emptyBank.addRegisters({{0xabcd}, reg0}),
+                 "Expected current offset of empty to be 0xabcd, is 0x12345");
 }
 
 // Reads.

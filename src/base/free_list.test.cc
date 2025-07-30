@@ -96,35 +96,35 @@ TEST(FreeListTest, DoubleFreeIdenticalDeath)
 {
     FreeList<int> l;
     l.insert(0, 1);
-    ASSERT_ANY_THROW(l.insert(0, 1));
+    EXPECT_DEATH(l.insert(0, 1), "free list: double free!");
 }
 
 TEST(FreeListTest, DoubleFreeSubrangeDeath)
 {
     FreeList<int> l;
     l.insert(0, 2);
-    ASSERT_ANY_THROW(l.insert(0, 1));
+    EXPECT_DEATH(l.insert(0, 1), "free list: double free!");
 }
 
 TEST(FreeListTest, DoubleFreeSuperrangeDeath)
 {
     FreeList<int> l;
     l.insert(1, 2);
-    ASSERT_ANY_THROW(l.insert(0, 3));
+    EXPECT_DEATH(l.insert(0, 3), "free list: double free!");
 }
 
 TEST(FreeListTest, DoubleFreeOverlapLeftDeath)
 {
     FreeList<int> l;
     l.insert(1, 3);
-    ASSERT_ANY_THROW(l.insert(0, 2));
+    EXPECT_DEATH(l.insert(0, 2), "free list: double free!");
 }
 
 TEST(FreeListTest, DoubleFreeOverlapRightDeath)
 {
     FreeList<int> l;
     l.insert(1, 3);
-    ASSERT_ANY_THROW(l.insert(2, 4));
+    EXPECT_DEATH(l.insert(2, 4), "free list: double free!");
 }
 
 TEST(FreeListTest, DoubleFreeMultiDeath)
@@ -132,5 +132,5 @@ TEST(FreeListTest, DoubleFreeMultiDeath)
     FreeList<int> l;
     l.insert(0, 1);
     l.insert(2, 3);
-    ASSERT_ANY_THROW(l.insert(0, 3));
+    EXPECT_DEATH(l.insert(0, 3), "free list: double free!");
 }

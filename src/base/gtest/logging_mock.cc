@@ -62,8 +62,12 @@ class GTestExitLogger : public Logger
         gtestLogOutput << s;
         std::cerr << loc.file << ":" << loc.line << ": " << s;
     }
-    // Throw an exception to escape down to the gtest framework.
-    void exit() override { throw GTestException(); }
+    // Abort the test to escape down to the gtest framework.
+    void
+    exit() override
+    {
+        std::abort();
+    }
 };
 
 } // anonymous namespace

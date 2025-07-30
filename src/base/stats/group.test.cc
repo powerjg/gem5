@@ -63,7 +63,8 @@ TEST(StatsGroupDeathTest, AddUniqueNameStatGroup)
     statistics::Group node1(nullptr);
     statistics::Group node2(nullptr);
     root.addStatGroup("Node1", &node1);
-    ASSERT_ANY_THROW(root.addStatGroup("Node1", &node2));
+    EXPECT_DEATH(root.addStatGroup("Node1", &node2),
+                 "Stats of the same group share the same name `Node1`");
 }
 
 /** Test that group names are not unique among two nodes' stat groups. */
@@ -82,14 +83,17 @@ TEST(StatsGroupTest, AddNotUniqueNameAmongGroups)
 TEST(StatsGroupDeathTest, AddNull)
 {
     statistics::Group root(nullptr);
-    ASSERT_ANY_THROW(root.addStatGroup("Node1", nullptr));
+    EXPECT_DEATH(root.addStatGroup("Node1", nullptr),
+                 "panic: panic condition "
+                 "!block occurred: Can't add null stat group Node1");
 }
 
 /** Test that a group cannot add itself. */
 TEST(StatsGroupDeathTest, AddItself)
 {
     statistics::Group root(nullptr);
-    ASSERT_ANY_THROW(root.addStatGroup("Node1", &root));
+    EXPECT_DEATH(root.addStatGroup("Node1", &root),
+                 "Stat group can't be added to itself");
 }
 
 /** @todo Test that a group cannot be added in a cycle. */
@@ -100,7 +104,7 @@ TEST(StatsGroupDeathTest, DISABLED_AddCycle)
     statistics::Group node1_1(nullptr);
     root.addStatGroup("Node1", &node1);
     node1.addStatGroup("Node1_1", &node1_1);
-    ASSERT_ANY_THROW(node1_1.addStatGroup("Root", &root));
+    EXPECT_DEATH(node1_1.addStatGroup("Root", &root), "");
 }
 
 /** Test adding multiple stat groups to a root node. */
@@ -296,14 +300,17 @@ TEST(StatsGroupTest, AddGetStat)
 TEST(StatsGroupDeathTest, MergeStatGroupNoGroup)
 {
     statistics::Group root(nullptr);
-    ASSERT_ANY_THROW(root.mergeStatGroup(nullptr));
+    EXPECT_DEATH(root.mergeStatGroup(nullptr),
+                 "panic: panic condition !block "
+                 "occurred: No stat block provided");
 }
 
 /** Test that a group cannot merge with itself. */
 TEST(StatsGroupDeathTest, MergeStatGroupItself)
 {
     statistics::Group root(nullptr);
-    ASSERT_ANY_THROW(root.mergeStatGroup(&root));
+    EXPECT_DEATH(root.mergeStatGroup(&root), "Stat group can't merge with "
+                                             "itself");
 }
 
 /** Test merging groups. */
@@ -333,7 +340,11 @@ TEST(StatsGroupDeathTest, MergeStatGroupMergedParent)
     statistics::Group node1(nullptr);
     statistics::Group node2(nullptr);
     root.mergeStatGroup(&node2);
-    ASSERT_ANY_THROW(node1.mergeStatGroup(&node2));
+    EXPECT_DEATH(
+        node1.mergeStatGroup(&node2),
+        "panic: panic condition "
+        "block->mergedParent occurred: Stat group already merged into another "
+        "group");
 }
 
 /**

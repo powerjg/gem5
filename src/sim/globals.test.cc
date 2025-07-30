@@ -162,5 +162,5 @@ TEST_F(GlobalsSerializationFixtureDeathTest, UnserializationCptNoCurTick)
     Globals globals;
     CheckpointIn cp(getDirName());
     Serializable::ScopedCheckpointSection scs(cp, "Section1");
-    ASSERT_ANY_THROW(globals.unserialize(cp));
+    EXPECT_DEATH(globals.unserialize(cp), "Can't unserialize");
 }

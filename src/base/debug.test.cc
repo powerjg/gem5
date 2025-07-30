@@ -54,12 +54,9 @@ TEST(DebugFlagTest, NameDesc)
 TEST(DebugFlagDeathTest, UniqueNames)
 {
     debug::SimpleFlag flag("FlagUniqueNamesTest", "A");
-    gtestLogOutput.str("");
-    EXPECT_ANY_THROW(debug::SimpleFlag("FlagUniqueNamesTest", "B"));
-    const std::string expected = "panic: panic condition !result.second "
-        "occurred: Flag FlagUniqueNamesTest already defined!\n";
-    std::string actual = gtestLogOutput.str();
-    EXPECT_EQ(expected, actual);
+    EXPECT_DEATH(debug::SimpleFlag("FlagUniqueNamesTest", "B"),
+                 "panic: panic condition !result.second occurred: "
+                 "Flag FlagUniqueNamesTest already defined!");
 }
 
 /** Test format attribute. */

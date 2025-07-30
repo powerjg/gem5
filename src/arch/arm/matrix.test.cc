@@ -422,7 +422,9 @@ TEST_F(TwoDifferentMatRegs, ParseParamUnderflow)
     ParseParam<decltype(mat1)> parser;
 
     // We should trigger a fatal() here.
-    EXPECT_ANY_THROW(parser.parse("b", mat1));
+    EXPECT_DEATH(parser.parse("b", mat1),
+                 "fatal: fatal condition str.size\\(\\) < 2 \\* X \\* Y "
+                 "occurred: Matrix register value underflow at unserialize");
 }
 
 // Testing ParseParam Overflow
@@ -431,7 +433,9 @@ TEST_F(TwoDifferentMatRegs, ParseParamOverflow)
     ParseParam<decltype(mat1)> parser;
 
     // We should trigger a fatal() here.
-    EXPECT_ANY_THROW(parser.parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", mat1));
+    EXPECT_DEATH(parser.parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", mat1),
+                 "fatal: fatal condition str.size\\(\\) > 2 \\* X \\* Y "
+                 "occurred: Matrix register value overflow at unserialize");
 }
 
 // Testing ShowParam

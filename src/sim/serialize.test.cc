@@ -182,7 +182,7 @@ TEST_F(SerializeFixtureDeathTest, ConstructorFailure)
     // Make sure file does not exist, so that the constructor will fail
     std::ifstream file(getCptPath());
     assert(!file.good());
-    ASSERT_ANY_THROW(CheckpointIn cpt(getDirName()));
+    EXPECT_DEATH(CheckpointIn cpt(getDirName()), "Can't load checkpoint file");
 }
 
 /**
@@ -212,7 +212,8 @@ TEST_F(SerializeFixture, ConstructorSuccess)
  */
 TEST_F(CheckpointInFixtureDeathTest, GetCptDir)
 {
-    ASSERT_ANY_THROW(CheckpointIn("/random_dir_name"));
+    EXPECT_DEATH(CheckpointIn("/random_dir_name"),
+                 "Can't load checkpoint file");
 }
 
 /** Test finding sections. */
@@ -455,8 +456,9 @@ TEST(SerializableDeathTest, GenerateCptOutFail)
     std::ofstream cpt;
     const std::string dir_name = std::tmpnam(nullptr);
 
-    ASSERT_ANY_THROW(Serializable::generateCheckpointOut(
-        dir_name + "/b/a/n/a/n/a/", cpt));
+    EXPECT_DEATH(
+        Serializable::generateCheckpointOut(dir_name + "/b/a/n/a/n/a/", cpt),
+        "couldn't mkdir");
 }
 
 /** Test successful CheckpointOut generation with non-existent dir. */
@@ -586,7 +588,8 @@ TEST_F(SerializableFixtureDeathTest, ParamIn)
 {
     int unserialized_integer;
     Serializable::ScopedCheckpointSection scs(*cpt_in, "Section1");
-    ASSERT_ANY_THROW(paramIn(*cpt_in, "Param1", unserialized_integer));
+    EXPECT_DEATH(paramIn(*cpt_in, "Param1", unserialized_integer),
+                 "Can't unserialize 'Section1:Param1'");
 }
 
 /**
@@ -957,7 +960,8 @@ TEST_F(SerializeFixtureDeathTest, ArrayParamOutInSmaller)
 
         Serializable::ScopedCheckpointSection scs(cpt, "Section1");
 
-        ASSERT_ANY_THROW(arrayParamIn(cpt, "Param1", unserialized_integer, 2));
+        EXPECT_DEATH(arrayParamIn(cpt, "Param1", unserialized_integer, 2),
+                     "Array size mismatch on Section1:Param1");
     }
 }
 

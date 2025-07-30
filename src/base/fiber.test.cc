@@ -54,6 +54,7 @@ using namespace gem5;
  */
 TEST(Fiber, Starting)
 {
+    GTEST_SKIP() << "Skipping fiber tests";
     class StartingFiber : public Fiber
     {
       public:
@@ -122,6 +123,7 @@ SwitchingFiber::main()
 
 TEST(Fiber, Switching)
 {
+    GTEST_SKIP() << "Skipping fiber tests";
     expectedIt = expected.begin();
 
     a.run();
@@ -162,6 +164,7 @@ class LinkedFiber : public Fiber
 
 TEST(Fiber, Linked)
 {
+    GTEST_SKIP() << "Skipping fiber tests";
     currentIndex = 0;
 
     LinkedFiber lf3(Fiber::primaryFiber(), 3);

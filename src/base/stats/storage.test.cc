@@ -253,7 +253,8 @@ TEST(StatsAvgStorTest, ZeroReset)
 /** Test that an assertion is thrown when bucket size is 0. */
 TEST(StatsDistStorDeathTest, BucketSize0)
 {
-    EXPECT_ANY_THROW(statistics::DistStor::Params params(0, 5, 0));
+    EXPECT_DEATH(statistics::DistStor::Params params(0, 5, 0),
+                 "must be greater than zero");
 }
 #endif
 
@@ -475,13 +476,17 @@ TEST(StatsDistStorTest, Reset)
 /** Test that an assertion is thrown when not enough buckets are provided. */
 TEST(StatsHistStorDeathTest, NotEnoughBuckets0)
 {
-    EXPECT_ANY_THROW(statistics::HistStor::Params params(0));
+    EXPECT_DEATH(statistics::HistStor::Params params(0),
+                 "There must be at "
+                 "least two buckets in a histogram");
 }
 
 /** Test that an assertion is thrown when not enough buckets are provided. */
 TEST(StatsHistStorDeathTest, NotEnoughBuckets1)
 {
-    EXPECT_ANY_THROW(statistics::HistStor::Params params(1));
+    EXPECT_DEATH(statistics::HistStor::Params params(1),
+                 "There must be at "
+                 "least two buckets in a histogram");
 }
 #endif
 

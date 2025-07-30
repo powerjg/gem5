@@ -345,7 +345,5 @@ TEST(TranslationGenDeathTest, IncrementEndIterator)
 {
     TestTranslationGen gen(0x10000, 0x20000);
     gtestLogOutput.str("");
-    ASSERT_ANY_THROW(gen.end()++);
-    EXPECT_THAT(gtestLogOutput.str(),
-            HasSubstr("Can't increment end iterator."));
+    EXPECT_DEATH(gen.end()++, "Can't increment end iterator");
 }

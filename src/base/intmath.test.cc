@@ -313,16 +313,20 @@ TEST(IntmathDeathTest, Log2iDeath)
 #endif
 
     // 1) value = 0
-    EXPECT_DEATH({
-        const int value = 0;
-        log2i(value);
-    }, "value > 0.*failed");
+    EXPECT_DEATH(
+        {
+            const int value = 0;
+            log2i(value);
+        },
+        "failed.*value > 0");
 
     // 2) value < 0
-    EXPECT_DEATH({
-        const int value = -1;
-        log2i(value);
-    }, "value > 0.*failed");
+    EXPECT_DEATH(
+        {
+            const int value = -1;
+            log2i(value);
+        },
+        "failed.*value > 0");
 
     // 3) value is not a power of 2
     EXPECT_DEATH({

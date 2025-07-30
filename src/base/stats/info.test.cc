@@ -232,49 +232,49 @@ TEST(StatsInfoTest, LessSub)
 TEST(StatsInfoDeathTest, NameEmpty)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("", false));
+    EXPECT_DEATH(info.setName("", false), "invalid stat name");
 }
 
 /** Test that a sub-group's name cannot be empty. */
 TEST(StatsInfoDeathTest, NameSubEmpty)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName(".a", false));
+    EXPECT_DEATH(info.setName(".a", false), "invalid stat name");
 }
 
 /** Test that a sub-group's name cannot be empty. */
 TEST(StatsInfoDeathTest, NameSubEmpty2)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("A.", false));
+    EXPECT_DEATH(info.setName("A.", false), "invalid stat name");
 }
 
 /** Test that a sub-group's name cannot be empty. */
 TEST(StatsInfoDeathTest, NameSubEmpty3)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("a.b..c", false));
+    EXPECT_DEATH(info.setName("a.b..c", false), "invalid stat name");
 }
 
 /** Test that the first character does not accept numbers. */
 TEST(StatsInfoDeathTest, NameFirstCharacterNumber)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("1", false));
+    EXPECT_DEATH(info.setName("1", false), "invalid stat name");
 }
 
 /** Test that the first character does not accept numbers (sub-group). */
 TEST(StatsInfoDeathTest, NameFirstCharacterNumberSub)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("A.1", false));
+    EXPECT_DEATH(info.setName("A.1", false), "invalid stat name");
 }
 
 /** Test that the first character does not accept special characters. */
 TEST(StatsInfoDeathTest, NameFirstCharacterSpecial)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("!", false));
+    EXPECT_DEATH(info.setName("!", false), "invalid stat name");
 }
 
 /**
@@ -284,14 +284,14 @@ TEST(StatsInfoDeathTest, NameFirstCharacterSpecial)
 TEST(StatsInfoDeathTest, NameFirstCharacterSpecialSub)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("A.!", false));
+    EXPECT_DEATH(info.setName("A.!", false), "invalid stat name");
 }
 
 /** Test that the non-first characters do not accept special characters. */
 TEST(StatsInfoDeathTest, NameOtherCharacterSpecial)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.setName("ab!de", false));
+    EXPECT_DEATH(info.setName("ab!de", false), "invalid stat name");
 }
 
 /** Test that a name cannot be duplicated under the old style. */
@@ -303,14 +303,14 @@ TEST(StatsInfoDeathTest, NameOldStyleDuplicate)
     EXPECT_EQ(info.name, name);
 
     TestInfo info2;
-    ASSERT_ANY_THROW(info2.setName(name, true));
+    EXPECT_DEATH(info2.setName(name, true), "same statistic name used twice");
 }
 
 /** Test that checking Info without setting the init flag fails. */
 TEST(StatsInfoDeathTest, BaseCheckNoInit)
 {
     TestInfo info;
-    ASSERT_ANY_THROW(info.baseCheck());
+    EXPECT_DEATH(info.baseCheck(), "Not all stats have been initialized");
 }
 
 /** Test that checking Info for display without setting the name fails. */
@@ -318,5 +318,5 @@ TEST(StatsInfoDeathTest, BaseCheckDisplayNoName)
 {
     TestInfo info;
     info.flags.set(statistics::init | statistics::display);
-    ASSERT_ANY_THROW(info.baseCheck());
+    EXPECT_DEATH(info.baseCheck(), "all printable stats must be named");
 }

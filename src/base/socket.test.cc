@@ -99,12 +99,9 @@ TEST(SocketTest, RelistenWithSameInstanceSamePort)
      * You cannot listen to another port if you are already listening to one.
      */
     gtestLogOutput.str("");
-    EXPECT_ANY_THROW(listen_socket.listen());
-    std::string expected =
-        "panic: panic condition listening occurred: "
-        "Socket already listening!\n";
-    std::string actual = gtestLogOutput.str();
-    EXPECT_EQ(expected, actual);
+    EXPECT_DEATH(listen_socket.listen(),
+                 "panic: panic condition listening "
+                 "occurred: Socket already listening!\n");
 }
 
 TEST(SocketTest, RelistenWithDifferentInstanceOnDifferentPort)
@@ -134,10 +131,8 @@ TEST(SocketTest, RelistenWithDifferentInstanceOnSamePort)
 TEST(SocketTest, AcceptError)
 {
     MockListenSocket listen_socket(-1);
-    EXPECT_ANY_THROW(listen_socket.accept());
-    std::string expected =
+    EXPECT_DEATH(
+        listen_socket.accept(),
         "panic: panic condition sfd == -1 occurred: mock: Failed to accept "
-        "connection: Bad file descriptor\n";
-    std::string actual = gtestLogOutput.str();
-    EXPECT_EQ(expected, actual);
+        "connection: Bad file descriptor\n");
 }
