@@ -254,8 +254,7 @@ def template MicroNeonMixExecute {{
             trace::InstRecord *traceData) const
     {
         Fault fault = NoFault;
-        uint64_t resTemp = 0;
-        resTemp = resTemp;
+        [[maybe_unused]] uint64_t resTemp = 0;
         %(op_decl)s;
         %(op_rd)s;
 

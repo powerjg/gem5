@@ -201,7 +201,7 @@ let {{
 
             # Code that actually handles the access
             if self.flavor == "dprefetch" or self.flavor == "iprefetch":
-                accCode = 'uint64_t temp = Mem%s; temp = temp;'
+                accCode = '[[maybe_unused]] uint64_t temp = Mem%s;'
             elif self.flavor == "fp":
                 accCode = "FpDest_uw = cSwap(Mem%s, ((CPSR)Cpsr).e);\n"
             else:
