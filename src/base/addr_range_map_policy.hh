@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <typeinfo>
 #include <vector>
 
 #include "base/bitfield.hh"
@@ -88,12 +89,41 @@ class AddrMapPolicy
     isEquivalent(const std::shared_ptr<AddrMapPolicy> &other) const = 0;
 
     /**
-     * Returns true if this policy is compatible with another for merging.
-     * E.g. same interleaving geometry (masks) but potentially different match
-     * values.
+     * Determine if another range merges with the current one, i.e. if
+     * they are part of the same contigous range and have the same
+     * interleaving bits.
      */
     virtual bool
     canMerge(const std::shared_ptr<AddrMapPolicy> &other) const = 0;
+
+    /**
+     * Compare policies for sorting.
+     */
+    virtual bool
+    lessThan(const std::shared_ptr<AddrMapPolicy> &other) const
+    {
+        auto ptr = other.get();
+        if (typeid(*this) != typeid(*ptr)) {
+            return typeid(*this).before(typeid(*ptr));
+        }
+        return false;
+    }
+
+    /**
+     * Check logic intersection with another range.
+     */
+    virtual bool
+    checkIntersection(Addr myStart, Addr myEnd, Addr otherStart, Addr otherEnd,
+                      const std::shared_ptr<AddrMapPolicy> &otherPolicy) const
+    {
+        return true;
+    }
+
+    virtual std::string
+    to_string(Addr start, Addr end) const
+    {
+        return csprintf("[%#llx:%#llx]", start, end);
+    }
 };
 
 class MaskedInterleavingPolicy : public AddrMapPolicy
@@ -234,6 +264,53 @@ class MaskedInterleavingPolicy : public AddrMapPolicy
     {
         return intlvMatch;
     }
+
+    std::string
+    to_string(Addr start, Addr end) const override
+    {
+        std::string str;
+        for (unsigned int i = 0; i < masks.size(); i++) {
+            str += " ";
+            Addr mask = masks[i];
+            while (mask) {
+                auto bit = ctz64(mask);
+                mask &= ~(1ULL << bit);
+                str += csprintf("a[%d]^", bit);
+            }
+            str += csprintf("\b=%d", bits(intlvMatch, i));
+        }
+        return csprintf("[%#llx:%#llx]%s", start, end, str);
+    }
+
+    bool
+    lessThan(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        auto ptr = other.get();
+        if (typeid(*this) != typeid(*ptr)) {
+            return AddrMapPolicy::lessThan(other);
+        }
+        auto casted =
+            std::static_pointer_cast<MaskedInterleavingPolicy>(other);
+        if (masks != casted->masks) {
+            return masks < casted->masks;
+        }
+        return intlvMatch < casted->intlvMatch;
+    }
+
+    bool
+    checkIntersection(
+        Addr myStart, Addr myEnd, Addr otherStart, Addr otherEnd,
+        const std::shared_ptr<AddrMapPolicy> &otherPolicy) const override
+    {
+        auto casted =
+            std::dynamic_pointer_cast<MaskedInterleavingPolicy>(otherPolicy);
+        if (casted) {
+            if (masks == casted->masks) {
+                return intlvMatch == casted->intlvMatch;
+            }
+        }
+        return true;
+    }
 };
 
 /**
@@ -337,6 +414,40 @@ class ModuloInterleavingPolicy : public AddrMapPolicy
         }
         return nStripes == casted->nStripes &&
                intlvLowBit == casted->intlvLowBit;
+    }
+
+    bool
+    lessThan(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        auto ptr = other.get();
+        if (typeid(*this) != typeid(*ptr)) {
+            return AddrMapPolicy::lessThan(other);
+        }
+        auto casted =
+            std::static_pointer_cast<ModuloInterleavingPolicy>(other);
+        if (nStripes != casted->nStripes) {
+            return nStripes < casted->nStripes;
+        }
+        if (intlvLowBit != casted->intlvLowBit) {
+            return intlvLowBit < casted->intlvLowBit;
+        }
+        return intlvMatch < casted->intlvMatch;
+    }
+
+    bool
+    checkIntersection(
+        Addr myStart, Addr myEnd, Addr otherStart, Addr otherEnd,
+        const std::shared_ptr<AddrMapPolicy> &otherPolicy) const override
+    {
+        auto casted =
+            std::dynamic_pointer_cast<ModuloInterleavingPolicy>(otherPolicy);
+        if (casted) {
+            if (nStripes == casted->nStripes &&
+                intlvLowBit == casted->intlvLowBit) {
+                return intlvMatch == casted->intlvMatch;
+            }
+        }
+        return true;
     }
 
   private:
@@ -453,6 +564,47 @@ class SparsePolicy : public AddrMapPolicy
     canMerge(const std::shared_ptr<AddrMapPolicy> &other) const override
     {
         // Sparse ranges don't merge in the traditional interleaving sense
+        return false;
+    }
+
+    std::string
+    to_string(Addr start, Addr end) const override
+    {
+        std::string s = csprintf("Sparse[%#llx:%#llx]", start, end);
+        for (const auto &r : subRanges) {
+            s += csprintf(":[%#llx:%#llx]", r.first, r.second);
+        }
+        return s;
+    }
+
+    bool
+    lessThan(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        auto ptr = other.get();
+        if (typeid(*this) != typeid(*ptr)) {
+            return AddrMapPolicy::lessThan(other);
+        }
+        auto casted = std::static_pointer_cast<SparsePolicy>(other);
+        return subRanges < casted->subRanges;
+    }
+
+    bool
+    checkIntersection(
+        Addr myStart, Addr myEnd, Addr otherStart, Addr otherEnd,
+        const std::shared_ptr<AddrMapPolicy> &otherPolicy) const override
+    {
+        for (const auto &r : subRanges) {
+            Addr overlapStart = std::max(r.first, otherStart);
+            Addr overlapEnd = std::min(r.second, otherEnd);
+            if (overlapStart < overlapEnd) {
+                // If there is a policy, ask it if it matches this flat chunk
+                if (!otherPolicy ||
+                    otherPolicy->checkIntersection(
+                        otherStart, otherEnd, r.first, r.second, nullptr)) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
