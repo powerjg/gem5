@@ -156,3 +156,46 @@ TEST(AddrRangeMapTest, InterleavedTest2)
     // intlvMatch = 2 for start = 0x80000000
     EXPECT_EQ(i->second, 2);
 }
+
+/**
+ * Test AddrRangeMap with modulo-based interleaved address ranges.
+ * Use 3-way interleaving.
+ */
+TEST(AddrRangeMapTest, ModuloInterleavingTest)
+{
+    const uint32_t stripes = 3;
+    const uint32_t intlvBit = 6; // 64-byte blocks
+    const Addr start = 0x10000;
+    const Addr end = 0x20000;
+
+    AddrRangeMap<int> r;
+    AddrRangeMap<int>::const_iterator i;
+
+    // Populate AddrRangeMap with 3-way modulo interleaved ranges
+    for (uint32_t k = 0; k < stripes; k++) {
+        // AddrRange(start, end, stripes, match, intlv_bit)
+        r.insert(AddrRange(start, end, stripes, k, intlvBit), k);
+    }
+
+    // Verify mapping
+    // 0x10000 >> 6 = 1024. 1024 % 3 = 1. -> Match 1
+    i = r.contains(start);
+    ASSERT_NE(i, r.end());
+    EXPECT_EQ(i->second, 1);
+
+    // 0x10040 >> 6 = 1025. 1025 % 3 = 2. -> Match 2
+    i = r.contains(start + 0x40);
+    ASSERT_NE(i, r.end());
+    EXPECT_EQ(i->second, 2);
+
+    // 0x10080 >> 6 = 1026. 1026 % 3 = 0. -> Match 0
+    i = r.contains(start + 0x80);
+    ASSERT_NE(i, r.end());
+    EXPECT_EQ(i->second, 0);
+
+    // Test a hole (out of range)
+    i = r.contains(start - 1);
+    EXPECT_EQ(i, r.end());
+    i = r.contains(end);
+    EXPECT_EQ(i, r.end());
+}

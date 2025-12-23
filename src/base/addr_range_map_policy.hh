@@ -236,6 +236,126 @@ class MaskedInterleavingPolicy : public AddrMapPolicy
     }
 };
 
+/**
+ * This policy implements modulo-based interleaving, e.g. for systems
+ * with a non-power-of-two number of channels.
+ *
+ * It assumes a simple interleaving scheme:
+ * addr % stripes == match
+ *
+ * However, since interleaving is usually done at a cache line (or larger)
+ * granularity, the check is effectively:
+ * (addr >> intlvBit) % stripes == match
+ */
+class ModuloInterleavingPolicy : public AddrMapPolicy
+{
+  private:
+    const uint32_t nStripes;
+    const uint32_t intlvMatch;
+    const uint32_t intlvLowBit;
+
+  public:
+    ModuloInterleavingPolicy(uint32_t stripes, uint32_t match, uint32_t bit)
+        : nStripes(stripes), intlvMatch(match), intlvLowBit(bit)
+    {}
+
+    bool
+    contains(Addr rangeStart, Addr rangeEnd, Addr a) const override
+    {
+        if (a < rangeStart || a >= rangeEnd) {
+            return false;
+        }
+        return ((a >> intlvLowBit) % nStripes) == intlvMatch;
+    }
+
+    uint32_t
+    getStripes() const
+    {
+        return nStripes;
+    }
+    uint32_t
+    getMatch() const
+    {
+        return intlvMatch;
+    }
+    uint32_t
+    getLowBit() const
+    {
+        return intlvLowBit;
+    }
+
+    Addr
+    getOffset(Addr rangeStart, Addr rangeEnd, Addr a) const override
+    {
+        return toCompact(a) - toCompact(rangeStart);
+    }
+
+    Addr
+    toInt(Addr rangeStart, Addr rangeEnd, Addr offset) const override
+    {
+        return fromCompact(offset + toCompact(rangeStart));
+    }
+
+    uint64_t
+    granularity() const override
+    {
+        return 1ULL << intlvLowBit;
+    }
+
+    uint32_t
+    stripes() const override
+    {
+        return nStripes;
+    }
+
+    Addr
+    size(Addr rangeStart, Addr rangeEnd) const override
+    {
+        return toCompact(rangeEnd) - toCompact(rangeStart);
+    }
+
+    bool
+    isEquivalent(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        auto casted =
+            std::dynamic_pointer_cast<ModuloInterleavingPolicy>(other);
+        if (!casted) {
+            return false;
+        }
+        return nStripes == casted->nStripes &&
+               intlvMatch == casted->intlvMatch &&
+               intlvLowBit == casted->intlvLowBit;
+    }
+
+    bool
+    canMerge(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        auto casted =
+            std::dynamic_pointer_cast<ModuloInterleavingPolicy>(other);
+        if (!casted) {
+            return false;
+        }
+        return nStripes == casted->nStripes &&
+               intlvLowBit == casted->intlvLowBit;
+    }
+
+  private:
+    Addr
+    toCompact(Addr a) const
+    {
+        return ((a >> intlvLowBit) / nStripes) << intlvLowBit |
+               (a & ((1ULL << intlvLowBit) - 1));
+    }
+
+    Addr
+    fromCompact(Addr a) const
+    {
+        return (((a >> intlvLowBit) * nStripes + intlvMatch) << intlvLowBit) |
+               (a & ((1ULL << intlvLowBit) - 1));
+    }
+};
+
+
 } // namespace gem5
 
 #endif // __BASE_ADDR_RANGE_MAP_POLICY_HH__
