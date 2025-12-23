@@ -119,6 +119,18 @@ class AddrMapPolicy
         return true;
     }
 
+    /**
+     * Create a new policy by merging this policy with others.
+     * Returns nullptr if the result is a non-interleaved (flat) policy.
+     */
+    virtual std::shared_ptr<AddrMapPolicy>
+    createMerged(
+        const std::vector<std::shared_ptr<AddrMapPolicy>> &policies) const
+    {
+        panic("Merging not supported for this policy type");
+        return nullptr;
+    }
+
     virtual std::string
     to_string(Addr start, Addr end) const
     {
@@ -311,6 +323,34 @@ class MaskedInterleavingPolicy : public AddrMapPolicy
         }
         return true;
     }
+
+    std::shared_ptr<AddrMapPolicy>
+    createMerged(const std::vector<std::shared_ptr<AddrMapPolicy>> &policies)
+        const override
+    {
+        uint64_t count = policies.size();
+        if (count != (1ULL << masks.size())) {
+            fatal("Got %d ranges spanning %d interleaving bits.", count,
+                  masks.size());
+        }
+
+        std::vector<bool> seen(count, false);
+        for (const auto &p : policies) {
+            auto masked =
+                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(p);
+            if (!masked) {
+                fatal("Cannot merge non-masked policies");
+            }
+            if (masked->masks != masks) {
+                fatal("Masks mismatch during merge");
+            }
+            if (seen[masked->intlvMatch]) {
+                fatal("Duplicate interleave match %d", masked->intlvMatch);
+            }
+            seen[masked->intlvMatch] = true;
+        }
+        return nullptr;
+    }
 };
 
 /**
@@ -448,6 +488,36 @@ class ModuloInterleavingPolicy : public AddrMapPolicy
             }
         }
         return true;
+    }
+
+    std::shared_ptr<AddrMapPolicy>
+    createMerged(const std::vector<std::shared_ptr<AddrMapPolicy>> &policies)
+        const override
+    {
+        uint64_t count = policies.size();
+        if (count != nStripes) {
+            fatal("Got %d ranges for %d stripes.", count, nStripes);
+        }
+
+        std::vector<bool> seen(count, false);
+        for (const auto &p : policies) {
+            auto modulo =
+                std::dynamic_pointer_cast<ModuloInterleavingPolicy>(p);
+            if (!modulo) {
+                fatal("Cannot merge non-modulo policies");
+            }
+            if (modulo->nStripes != nStripes) {
+                fatal("Stripes mismatch during merge");
+            }
+            if (modulo->intlvLowBit != intlvLowBit) {
+                fatal("IntlvLowBit mismatch during merge");
+            }
+            if (seen[modulo->intlvMatch]) {
+                fatal("Duplicate interleave match %d", modulo->intlvMatch);
+            }
+            seen[modulo->intlvMatch] = true;
+        }
+        return nullptr;
     }
 
   private:

@@ -115,31 +115,18 @@ class AddrRange
         if (count > 1) {
             fatal_if(!interleaved(), "Merging non-interleaved ranges?");
 
-            auto maskedPolicy =
-                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(_policy);
-            fatal_if(!maskedPolicy, "Cannot merge non-masked policies yet");
+            std::vector<std::shared_ptr<AddrMapPolicy>> policies;
+            policies.reserve(count);
 
-            const auto &masks = maskedPolicy->getMasks();
-            fatal_if(count != (1ULL << masks.size()),
-                    "Got %d ranges spanning %d interleaving bits.",
-                    count, masks.size());
-
-            uint8_t match = 0;
             for (auto it = begin_it; it != end_it; it++) {
-                fatal_if(!mergesWith(*it),
-                        "Can only merge ranges with the same start, end "
-                        "and interleaving bits, %s %s.", to_string(),
-                        it->to_string());
-
-                auto p = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
-                    it->_policy);
-                fatal_if(p->getMatch() != match,
-                         "Expected interleave match %d but got %d when "
-                         "merging.",
-                         match, p->getMatch());
-                ++match;
+                fatal_if(it->_start != _start || it->_end != _end,
+                         "Can only merge ranges with the same start and end");
+                fatal_if(!it->_policy, "Cannot merge flat ranges");
+                policies.push_back(it->_policy);
             }
-            _policy = nullptr;
+
+            // Attempt to merge policies
+            _policy = _policy->createMerged(policies);
         }
     }
 
