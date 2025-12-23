@@ -1757,3 +1757,45 @@ TEST(AddrRangeTest, SparseIntersection)
     AddrRange rSparse3(ranges3);
     EXPECT_TRUE(rSparse.intersects(rSparse3));
 }
+
+TEST(AddrRangeTest, ConstructorMergeTest)
+{
+    // 1. Compatible policies (Modulo) - Forward order
+    // 2 stripes, bit 6.
+    // Range: 0-256. Stripes: 0 (0-128 interleaved), 1 (0-128 interleaved).
+    // Actually stripes split the address space.
+    // 2 stripes, bit 0 (interleave bit).
+    // range 0-100.
+    // r1: match 0. (0, 2, 4...)
+    // r2: match 1. (1, 3, 5...)
+    // Combined: 0-100 flat.
+    // Wait, Modulo constructor signature:
+    // AddrRange(start, end, stripes, intlvMatch, intlvLowBit)
+    AddrRange m1(0, 100, 2, 0, 0); // stripes=2, match=0, bit=0
+    AddrRange m2(0, 100, 2, 1, 0); // stripes=2, match=1, bit=0
+    std::vector<AddrRange> ranges = {m1, m2};
+    AddrRange merged(ranges);
+    EXPECT_FALSE(merged.interleaved());
+    EXPECT_EQ(merged.start(), 0);
+    EXPECT_EQ(merged.end(), 100);
+
+    // 2. Reverse order
+    std::vector<AddrRange> rangesRev = {m2, m1};
+    AddrRange mergedRev(rangesRev);
+    EXPECT_FALSE(mergedRev.interleaved());
+    EXPECT_EQ(mergedRev.start(), 0);
+    EXPECT_EQ(mergedRev.end(), 100);
+
+    // 3. Incompatible policies (Masked + Modulo)
+    // Masked: 0-100, masks={1}, match=0
+    AddrRange k1(0, 100, std::vector<Addr>{1}, 0);
+    std::vector<AddrRange> mixed = {m1, k1};
+    // Expected to fail
+    EXPECT_ANY_THROW({ AddrRange r(mixed); });
+
+    // 4. Incompatible policies (Modulo mismatch)
+    // Different stripes
+    AddrRange m3(0, 100, 3, 0, 0); // 3 stripes
+    std::vector<AddrRange> mismatch = {m1, m3};
+    EXPECT_ANY_THROW({ AddrRange r(mismatch); });
+}
