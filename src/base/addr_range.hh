@@ -412,24 +412,10 @@ class AddrRange
     std::string
     to_string() const
     {
-        if (auto p =
-                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(_policy)) {
-            const auto &masks = p->getMasks();
-            std::string str;
-            for (unsigned int i = 0; i < masks.size(); i++) {
-                str += " ";
-                Addr mask = masks[i];
-                while (mask) {
-                    auto bit = ctz64(mask);
-                    mask &= ~(1ULL << bit);
-                    str += csprintf("a[%d]^", bit);
-                }
-                str += csprintf("\b=%d", bits(p->getMatch(), i));
-            }
-            return csprintf("[%#llx:%#llx]%s", _start, _end, str);
-        } else {
-            return csprintf("[%#llx:%#llx]", _start, _end);
+        if (_policy) {
+            return _policy->to_string(_start, _end);
         }
+        return csprintf("[%#llx:%#llx]", _start, _end);
     }
 
     /**
@@ -469,81 +455,20 @@ class AddrRange
     intersects(const AddrRange& r) const
     {
         if (_start >= r._end || _end <= r._start) {
-            // start with the simple case of no overlap at all,
-            // applicable even if we have interleaved ranges
             return false;
-        } else if (!interleaved() && !r.interleaved()) {
-            // if neither range is interleaved, we are done
-            return true;
         }
 
-        // now it gets complicated, focus on the cases we care about
-        if (r.size() == 1) {
-            // keep it simple and check if the address is within
-            // this range
-            return contains(r.start());
-        } else if (mergesWith(r)) {
-            // restrict the check to ranges that belong to the
-            // same chunk
-            return _policy->isEquivalent(r._policy);
-        } else {
-            // Check for SparsePolicy to handle holes
-            auto p_sparse = std::dynamic_pointer_cast<SparsePolicy>(_policy);
-            auto r_sparse = std::dynamic_pointer_cast<SparsePolicy>(r._policy);
-
-            if (p_sparse) {
-                const auto &sub = p_sparse->getSubRanges();
-                if (!r.interleaved()) {
-                    // r is Flat
-                    for (const auto &s : sub) {
-                        if (std::max(s.first, r._start) <
-                            std::min(s.second, r._end)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                } else if (r_sparse) {
-                    // r is Sparse
-                    const auto &r_sub = r_sparse->getSubRanges();
-                    for (const auto &s1 : sub) {
-                        for (const auto &s2 : r_sub) {
-                            if (std::max(s1.first, s2.first) <
-                                std::min(s1.second, s2.second)) {
-                                return true;
-                            }
-                        }
-                    }
-                    return false;
-                }
-            } else if (r_sparse) {
-                // p is not Sparse (could be Flat or Interleaved), r is Sparse
-                if (!interleaved()) {
-                    // p is Flat
-                    const auto &sub = r_sparse->getSubRanges();
-                    for (const auto &s : sub) {
-                        if (std::max(s.first, _start) <
-                            std::min(s.second, _end)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-            }
-
-            // Check if both are masked interleaving.
-            if (auto p = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
-                    _policy)) {
-                if (auto rp =
-                        std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
-                            r._policy)) {
-                    if (p->getMasks() == rp->getMasks()) {
-                        return p->getMatch() == rp->getMatch();
-                    }
-                }
-            }
-            panic("Cannot test intersection of %s and %s\n",
-                  to_string(), r.to_string());
+        if (_policy && !_policy->checkIntersection(_start, _end, r._start,
+                                                   r._end, r._policy)) {
+            return false;
         }
+
+        if (r._policy && !r._policy->checkIntersection(
+                             r._start, r._end, _start, _end, _policy)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -768,27 +693,9 @@ class AddrRange
             return _start < r._start;
         } else {
             // For now assume that the end is also the same.
-            // If both regions are interleaved, assume same interleaving,
-            // and compare intlvMatch values.
-            // Otherwise, return true if this address range is interleaved.
+            // If both regions are interleaved, ask policy to compare.
             if (interleaved() && r.interleaved()) {
-                auto p1 = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
-                    _policy);
-                auto p2 = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
-                    r._policy);
-                if (p1 && p2) {
-                    return p1->getMatch() < p2->getMatch();
-                }
-
-                auto p3 = std::dynamic_pointer_cast<ModuloInterleavingPolicy>(
-                    _policy);
-                auto p4 = std::dynamic_pointer_cast<ModuloInterleavingPolicy>(
-                    r._policy);
-                if (p3 && p4) {
-                    return p3->getMatch() < p4->getMatch();
-                }
-
-                return false;
+                return _policy->lessThan(r._policy);
             } else {
                 return interleaved();
             }
