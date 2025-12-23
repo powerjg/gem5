@@ -46,6 +46,7 @@
 #include <list>
 #include <vector>
 
+#include "base/addr_range_map_policy.hh"
 #include "base/bitfield.hh"
 #include "base/cprintf.hh"
 #include "base/logging.hh"
@@ -89,15 +90,7 @@ class AddrRange
     Addr _start;
     Addr _end;
 
-    /**
-     * Each mask determines the bits we need to xor to get one bit of
-     * sel. The first (0) mask is used to get the LSB and the last for
-     * the MSB of sel.
-     */
-    std::vector<Addr> masks;
-
-    /** The value to compare sel with. */
-    uint8_t intlvMatch;
+    std::shared_ptr<AddrMapPolicy> _policy;
 
   protected:
     struct Dummy {};
@@ -106,20 +99,26 @@ class AddrRange
     // constructor which takes two Addrs.
     template <class Iterator>
     AddrRange(Dummy, Iterator begin_it, Iterator end_it)
-        : _start(1), _end(0), intlvMatch(0)
+        : _start(1), _end(0), _policy(nullptr)
     {
         if (begin_it != end_it) {
             // get the values from the first one and check the others
             _start = begin_it->_start;
             _end = begin_it->_end;
-            masks = begin_it->masks;
-            intlvMatch = begin_it->intlvMatch;
+            _policy = begin_it->_policy;
         }
 
         auto count = std::distance(begin_it, end_it);
         // either merge if got all ranges or keep this equal to the single
         // interleaved range
         if (count > 1) {
+            fatal_if(!interleaved(), "Merging non-interleaved ranges?");
+
+            auto maskedPolicy =
+                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(_policy);
+            fatal_if(!maskedPolicy, "Cannot merge non-masked policies yet");
+
+            const auto &masks = maskedPolicy->getMasks();
             fatal_if(count != (1ULL << masks.size()),
                     "Got %d ranges spanning %d interleaving bits.",
                     count, masks.size());
@@ -131,13 +130,15 @@ class AddrRange
                         "and interleaving bits, %s %s.", to_string(),
                         it->to_string());
 
-                fatal_if(it->intlvMatch != match,
-                        "Expected interleave match %d but got %d when "
-                        "merging.", match, it->intlvMatch);
+                auto p = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
+                    it->_policy);
+                fatal_if(p->getMatch() != match,
+                         "Expected interleave match %d but got %d when "
+                         "merging.",
+                         match, p->getMatch());
                 ++match;
             }
-            masks.clear();
-            intlvMatch = 0;
+            _policy = nullptr;
         }
     }
 
@@ -146,9 +147,7 @@ class AddrRange
     /**
      * @ingroup api_addr_range
      */
-    AddrRange()
-        : _start(1), _end(0), intlvMatch(0)
-    {}
+    AddrRange() : _start(1), _end(0), _policy(nullptr) {}
 
     /**
      * Construct an address range
@@ -182,13 +181,16 @@ class AddrRange
      */
     AddrRange(Addr _start, Addr _end, const std::vector<Addr> &_masks,
               uint8_t _intlv_match)
-        : _start(_start), _end(_end), masks(_masks),
-          intlvMatch(_intlv_match)
+        : _start(_start), _end(_end), _policy(nullptr)
     {
-        // sanity checks
-        fatal_if(!masks.empty() && _intlv_match >= 1ULL << masks.size(),
-                 "Match value %d does not fit in %d interleaving bits\n",
-                 _intlv_match, masks.size());
+        if (!_masks.empty()) {
+            // sanity checks
+            fatal_if(_intlv_match >= 1ULL << _masks.size(),
+                     "Match value %d does not fit in %d interleaving bits\n",
+                     _intlv_match, _masks.size());
+            _policy = std::make_shared<MaskedInterleavingPolicy>(_masks,
+                                                                 _intlv_match);
+        }
     }
 
     /**
@@ -218,45 +220,50 @@ class AddrRange
      * @ingroup api_addr_range
      */
     AddrRange(Addr _start, Addr _end, uint8_t _intlv_high_bit,
-              uint8_t _xor_high_bit, uint8_t _intlv_bits,
-              uint8_t _intlv_match)
-        : _start(_start), _end(_end), masks(_intlv_bits),
-          intlvMatch(_intlv_match)
+              uint8_t _xor_high_bit, uint8_t _intlv_bits, uint8_t _intlv_match)
+        : _start(_start), _end(_end), _policy(nullptr)
     {
-        // sanity checks
-        fatal_if(_intlv_bits && _intlv_match >= 1ULL << _intlv_bits,
-                 "Match value %d does not fit in %d interleaving bits\n",
-                 _intlv_match, _intlv_bits);
+        if (_intlv_bits) {
+            fatal_if(_intlv_match >= 1ULL << _intlv_bits,
+                     "Match value %d does not fit in %d interleaving bits\n",
+                     _intlv_match, _intlv_bits);
 
-        // ignore the XOR bits if not interleaving
-        if (_intlv_bits && _xor_high_bit) {
-            if (_xor_high_bit == _intlv_high_bit) {
-                fatal("XOR and interleave high bit must be different\n");
-            }  else if (_xor_high_bit > _intlv_high_bit) {
-                if ((_xor_high_bit - _intlv_high_bit) < _intlv_bits)
-                    fatal("XOR and interleave high bit must be at least "
-                          "%d bits apart\n", _intlv_bits);
-            } else {
-                if ((_intlv_high_bit - _xor_high_bit) < _intlv_bits) {
-                    fatal("Interleave and XOR high bit must be at least "
-                          "%d bits apart\n", _intlv_bits);
+            // ignore the XOR bits if not interleaving
+            if (_xor_high_bit) {
+                if (_xor_high_bit == _intlv_high_bit) {
+                    fatal("XOR and interleave high bit must be different\n");
+                } else if (_xor_high_bit > _intlv_high_bit) {
+                    if ((_xor_high_bit - _intlv_high_bit) < _intlv_bits) {
+                        fatal("XOR and interleave high bit must be at least "
+                              "%d bits apart\n",
+                              _intlv_bits);
+                    }
+                } else {
+                    if ((_intlv_high_bit - _xor_high_bit) < _intlv_bits) {
+                        fatal("Interleave and XOR high bit must be at least "
+                              "%d bits apart\n",
+                              _intlv_bits);
+                    }
                 }
             }
-        }
 
-        for (auto i = 0; i < _intlv_bits; i++) {
-            uint8_t bit1 = _intlv_high_bit - i;
-            Addr mask = (1ULL << bit1);
-            if (_xor_high_bit) {
-                uint8_t bit2 = _xor_high_bit - i;
-                mask |= (1ULL << bit2);
+            std::vector<Addr> masks(_intlv_bits);
+            for (auto i = 0; i < _intlv_bits; i++) {
+                uint8_t bit1 = _intlv_high_bit - i;
+                Addr mask = (1ULL << bit1);
+                if (_xor_high_bit) {
+                    uint8_t bit2 = _xor_high_bit - i;
+                    mask |= (1ULL << bit2);
+                }
+                masks[_intlv_bits - i - 1] = mask;
             }
-            masks[_intlv_bits - i - 1] = mask;
+            _policy = std::make_shared<MaskedInterleavingPolicy>(masks,
+                                                                 _intlv_match);
         }
     }
 
     AddrRange(Addr _start, Addr _end)
-        : _start(_start), _end(_end), intlvMatch(0)
+        : _start(_start), _end(_end), _policy(nullptr)
     {}
 
     /**
@@ -281,7 +288,11 @@ class AddrRange
      *
      * @ingroup api_addr_range
      */
-    bool interleaved() const { return masks.size() > 0; }
+    bool
+    interleaved() const
+    {
+        return _policy != nullptr;
+    }
 
     /**
      * Determing the interleaving granularity of the range.
@@ -293,13 +304,8 @@ class AddrRange
     uint64_t
     granularity() const
     {
-        if (interleaved()) {
-            auto combined_mask = 0;
-            for (auto mask: masks) {
-                combined_mask |= mask;
-            }
-            const uint8_t lowest_bit = ctz64(combined_mask);
-            return 1ULL << lowest_bit;
+        if (_policy) {
+            return _policy->granularity();
         } else {
             return size();
         }
@@ -313,7 +319,14 @@ class AddrRange
      *
      * @ingroup api_addr_range
      */
-    uint32_t stripes() const { return 1ULL << masks.size(); }
+    uint32_t
+    stripes() const
+    {
+        if (_policy) {
+            return _policy->stripes();
+        }
+        return 1;
+    }
 
     /**
      * Get the size of the address range. For a case where
@@ -325,7 +338,10 @@ class AddrRange
     Addr
     size() const
     {
-        return (_end - _start) >> masks.size();
+        if (_policy) {
+            return _policy->size(_start, _end);
+        }
+        return (_end - _start);
     }
 
     /**
@@ -359,7 +375,9 @@ class AddrRange
     std::string
     to_string() const
     {
-        if (interleaved()) {
+        if (auto p =
+                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(_policy)) {
+            const auto &masks = p->getMasks();
             std::string str;
             for (unsigned int i = 0; i < masks.size(); i++) {
                 str += " ";
@@ -369,7 +387,7 @@ class AddrRange
                     mask &= ~(1ULL << bit);
                     str += csprintf("a[%d]^", bit);
                 }
-                str += csprintf("\b=%d", bits(intlvMatch, i));
+                str += csprintf("\b=%d", bits(p->getMatch(), i));
             }
             return csprintf("[%#llx:%#llx]%s", _start, _end, str);
         } else {
@@ -390,8 +408,14 @@ class AddrRange
     bool
     mergesWith(const AddrRange& r) const
     {
-        return r._start == _start && r._end == _end &&
-            r.masks == masks;
+        bool same_policy = false;
+        if (!_policy && !r._policy) {
+            same_policy = true;
+        } else if (_policy && r._policy) {
+            same_policy = _policy->canMerge(r._policy);
+        }
+
+        return r._start == _start && r._end == _end && same_policy;
     }
 
     /**
@@ -424,8 +448,19 @@ class AddrRange
         } else if (mergesWith(r)) {
             // restrict the check to ranges that belong to the
             // same chunk
-            return intlvMatch == r.intlvMatch;
+            return _policy->isEquivalent(r._policy);
         } else {
+            // Check if both are masked interleaving.
+            if (auto p = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
+                    _policy)) {
+                if (auto rp =
+                        std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
+                            r._policy)) {
+                    if (p->getMasks() == rp->getMasks()) {
+                        return p->getMatch() == rp->getMatch();
+                    }
+                }
+            }
             panic("Cannot test intersection of %s and %s\n",
                   to_string(), r.to_string());
         }
@@ -502,16 +537,10 @@ class AddrRange
         // bits from the address match the interleaving value
         bool in_range = a >= _start && a < _end;
         if (in_range) {
-            auto sel = 0;
-            for (unsigned int i = 0; i < masks.size(); i++) {
-                Addr masked = a & masks[i];
-                // The result of an xor operation is 1 if the number
-                // of bits set is odd or 0 othersize, thefore it
-                // suffices to count the number of bits set to
-                // determine the i-th bit of sel.
-                sel |= (popCount(masked) % 2) << i;
+            if (_policy) {
+                return _policy->contains(_start, _end, a);
             }
-            return sel == intlvMatch;
+            return true;
         }
         return false;
     }
@@ -523,18 +552,6 @@ class AddrRange
      * start, start + size / intlv_bits). We can achieve this by
      * discarding the LSB in each mask.
      *
-     * e.g., if the input address is of the form:
-     * ------------------------------------
-     * | a_high | x1 | a_mid | x0 | a_low |
-     * ------------------------------------
-     * where x0 is the LSB set in masks[0]
-     * and x1 is the LSB set in masks[1]
-     *
-     * this function will return:
-     * ---------------------------------
-     * |    0 | a_high | a_mid | a_low |
-     * ---------------------------------
-     *
      * @param a the input address
      * @return the new address, or the input address if not interleaved
      *
@@ -543,32 +560,9 @@ class AddrRange
     inline Addr
     removeIntlvBits(Addr a) const
     {
-        // Directly return the address if the range is not interleaved
-        // to prevent undefined behavior.
-        if (!interleaved()) {
-            return a;
-        }
-
-        // Get the LSB set from each mask
-        auto masks_lsb = std::make_unique<int[]>(masks.size());
-        for (unsigned int i = 0; i < masks.size(); i++) {
-            masks_lsb[i] = ctz64(masks[i]);
-        }
-
-        // we need to sort the list of bits we will discard as we
-        // discard them one by one starting.
-        std::sort(masks_lsb.get(), masks_lsb.get() + masks.size());
-
-        for (unsigned int i = 0; i < masks.size(); i++) {
-            const int intlv_bit = masks_lsb[i];
-            if (intlv_bit > 0) {
-                // on every iteration we remove one bit from the input
-                // address, and therefore the lowest invtl_bit has
-                // also shifted to the right by i positions.
-                a = insertBits(a >> 1, intlv_bit - i - 1, 0, a);
-            } else {
-                a >>= 1;
-            }
+        if (auto p =
+                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(_policy)) {
+            return p->removeIntlvBits(a);
         }
         return a;
     }
@@ -582,42 +576,10 @@ class AddrRange
     inline Addr
     addIntlvBits(Addr a) const
     {
-        // Directly return the address if the range is not interleaved
-        // to prevent undefined behavior.
-        if (!interleaved()) {
-            return a;
+        if (auto p =
+                std::dynamic_pointer_cast<MaskedInterleavingPolicy>(_policy)) {
+            return p->addIntlvBits(a);
         }
-
-        // Get the LSB set from each mask
-        auto masks_lsb = std::make_unique<int[]>(masks.size());
-        for (unsigned int i = 0; i < masks.size(); i++) {
-            masks_lsb[i] = ctz64(masks[i]);
-        }
-
-        // Add bits one-by-one from the LSB side.
-        std::sort(masks_lsb.get(), masks_lsb.get() + masks.size());
-        for (unsigned int i = 0; i < masks.size(); i++) {
-            const int intlv_bit = masks_lsb[i];
-            if (intlv_bit > 0) {
-                // on every iteration we add one bit from the input
-                // address, but the lowest invtl_bit in the iteration is
-                // always in the right position because they are sorted
-                // increasingly from the LSB
-                a = insertBits(a << 1, intlv_bit - 1, 0, a);
-            } else {
-                a <<= 1;
-            }
-        }
-
-        for (unsigned int i = 0; i < masks.size(); i++) {
-            const int lsb = ctz64(masks[i]);
-            const Addr intlv_bit = bits(intlvMatch, i);
-            // Calculate the mask ignoring the LSB
-            const Addr masked = a & masks[i] & ~(1 << lsb);
-            // Set the LSB of the mask to whatever satisfies the selector bit
-            a = insertBits(a, lsb, intlv_bit ^ popCount(masked));
-        }
-
         return a;
     }
 
@@ -641,8 +603,8 @@ class AddrRange
         if (!in_range) {
             return MaxAddr;
         }
-        if (interleaved()) {
-            return removeIntlvBits(a) - removeIntlvBits(_start);
+        if (_policy) {
+            return _policy->getOffset(_start, _end, a);
         } else {
             return a - _start;
         }
@@ -730,7 +692,14 @@ class AddrRange
             // and compare intlvMatch values.
             // Otherwise, return true if this address range is interleaved.
             if (interleaved() && r.interleaved()) {
-                return intlvMatch < r.intlvMatch;
+                auto p1 = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
+                    _policy);
+                auto p2 = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
+                    r._policy);
+                if (p1 && p2) {
+                    return p1->getMatch() < p2->getMatch();
+                }
+                return false;
             } else {
                 return interleaved();
             }
@@ -745,10 +714,13 @@ class AddrRange
     {
         if (_start != r._start)    return false;
         if (_end != r._end)      return false;
-        if (masks != r.masks)         return false;
-        if (intlvMatch != r.intlvMatch)   return false;
-
-        return true;
+        if (!_policy && !r._policy) {
+            return true;
+        }
+        if (_policy && r._policy) {
+            return _policy->isEquivalent(r._policy);
+        }
+        return false;
     }
 
     /**
@@ -814,50 +786,68 @@ operator-(const AddrRangeList &base, const AddrRangeList &to_exclude)
 }
 
 static inline AddrRangeList
-operator-=(AddrRangeList &base, const AddrRangeList &to_exclude)
-{
-    base = base - to_exclude;
-    return base;
-}
-
-static inline AddrRangeList
 operator-(const AddrRangeList &base, const AddrRange &to_exclude)
 {
     return exclude(base, to_exclude);
 }
 
-static inline AddrRangeList
+static inline AddrRangeList &
+operator-=(AddrRangeList &base, const AddrRangeList &to_exclude)
+{
+    base = exclude(base, to_exclude);
+    return base;
+}
+
+static inline AddrRangeList &
 operator-=(AddrRangeList &base, const AddrRange &to_exclude)
 {
-    base = base - to_exclude;
+    base = exclude(base, to_exclude);
     return base;
 }
 
 /**
+ * Factory method to create an address range from a start address and
+ * a size.
+ *
+ * @param start The start address of this range
+ * @param size The size of the range
+ *
  * @ingroup api_addr_range
  */
-inline AddrRange
+static inline AddrRange
+RangeSize(Addr start, Addr size)
+{
+    return AddrRange(start, start + size);
+}
+
+/**
+ * Factory method to create an address range from a start address and
+ * an end address.
+ *
+ * @param start The start address of this range
+ * @param end The end address of this range
+ *
+ * @ingroup api_addr_range
+ */
+static inline AddrRange
 RangeEx(Addr start, Addr end)
 {
     return AddrRange(start, end);
 }
 
 /**
+ * Factory method to create an address range from a start address and
+ * an end address (inclusive).
+ *
+ * @param start The start address of this range
+ * @param end The end address of this range
+ *
  * @ingroup api_addr_range
  */
-inline AddrRange
+static inline AddrRange
 RangeIn(Addr start, Addr end)
 {
     return AddrRange(start, end + 1);
-}
-
-/**
- * @ingroup api_addr_range
- */
-inline AddrRange
-RangeSize(Addr start, Addr size)
-{
-    return AddrRange(start, start + size);
 }
 
 } // namespace gem5
