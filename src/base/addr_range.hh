@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <iterator>
 #include <list>
+#include <utility>
 #include <vector>
 
 #include "base/addr_range_map_policy.hh"
@@ -190,6 +191,42 @@ class AddrRange
                      _intlv_match, _masks.size());
             _policy = std::make_shared<MaskedInterleavingPolicy>(_masks,
                                                                  _intlv_match);
+        }
+    }
+
+    /**
+     * Create an address range with modulo-based interleaving.
+     *
+     * @param start The start address of the range.
+     * @param end The end address of the range.
+     * @param stripes The number of stripes (channels).
+     * @param intlv_match The stripe index for this range.
+     * @param intlv_low_bit The bit position of the interleaving granularity
+                            (log2).
+     */
+    AddrRange(Addr start, Addr end, uint32_t stripes, uint32_t intlv_match,
+              uint32_t intlv_low_bit = 0)
+        : _start(start),
+          _end(end),
+          _policy(std::make_shared<ModuloInterleavingPolicy>(
+              stripes, intlv_match, intlv_low_bit))
+    {}
+
+    /**
+     * Create an address range with sparse sub-ranges (holes).
+     *
+     * @param ranges Vector of valid address chunks (start, end).
+     *               Must be sorted and non-overlapping.
+     */
+    AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges)
+        : _policy(std::make_shared<SparsePolicy>(ranges))
+    {
+        if (ranges.empty()) {
+            _start = 1;
+            _end = 0;
+        } else {
+            _start = ranges.front().first;
+            _end = ranges.back().second;
         }
     }
 
@@ -699,6 +736,15 @@ class AddrRange
                 if (p1 && p2) {
                     return p1->getMatch() < p2->getMatch();
                 }
+
+                auto p3 = std::dynamic_pointer_cast<ModuloInterleavingPolicy>(
+                    _policy);
+                auto p4 = std::dynamic_pointer_cast<ModuloInterleavingPolicy>(
+                    r._policy);
+                if (p3 && p4) {
+                    return p3->getMatch() < p4->getMatch();
+                }
+
                 return false;
             } else {
                 return interleaved();

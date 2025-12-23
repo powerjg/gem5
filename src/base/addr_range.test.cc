@@ -265,7 +265,7 @@ TEST(AddrRangeTest, isSubsetPartialSubset)
 
 TEST(AddrRangeTest, isSubsetInterleavedCompleteOverlap)
 {
-    AddrRange r1(0x00, 0x100, {0x40}, 0);
+    AddrRange r1(0x00, 0x100, std::vector<Addr>{0x40}, 0);
     AddrRange r2(0x00, 0x40);
 
     EXPECT_TRUE(r2.isSubset(r1));
@@ -273,7 +273,7 @@ TEST(AddrRangeTest, isSubsetInterleavedCompleteOverlap)
 
 TEST(AddrRangeTest, isSubsetInterleavedNoOverlap)
 {
-    AddrRange r1(0x00, 0x100, {0x40}, 1);
+    AddrRange r1(0x00, 0x100, std::vector<Addr>{0x40}, 1);
     AddrRange r2(0x00, 0x40);
 
     EXPECT_FALSE(r2.isSubset(r1));
@@ -281,7 +281,7 @@ TEST(AddrRangeTest, isSubsetInterleavedNoOverlap)
 
 TEST(AddrRangeTest, isSubsetInterleavedPartialOverlap)
 {
-    AddrRange r1(0x00, 0x100, {0x40}, 0);
+    AddrRange r1(0x00, 0x100, std::vector<Addr>{0x40}, 0);
     AddrRange r2(0x10, 0x50);
 
     EXPECT_FALSE(r2.isSubset(r1));
@@ -1594,8 +1594,90 @@ TEST(AddrRangeDeathTest, ExcludeInterleavingRanges)
         AddrRange(0x180, 0x210),
     };
 
-    AddrRange r(0x100, 0x200, {1}, 0);
+    AddrRange r(0x100, 0x200, std::vector<Addr>{1}, 0);
 
     EXPECT_TRUE(r.interleaved());
     EXPECT_DEATH(r.exclude(exclude_ranges), "");
 }
+
+/*
+ * Modulo Interleaving Tests
+ */
+
+TEST(AddrRangeTest, ModuloSimple)
+{
+    // Range 0-300, 3 stripes.
+    // Stripe 0: 0, 3, 6...
+    // Stripe 1: 1, 4, 7...
+    // Stripe 2: 2, 5, 8...
+    AddrRange r0(0, 300, 3, 0);
+    AddrRange r1(0, 300, 3, 1);
+    AddrRange r2(0, 300, 3, 2);
+
+    EXPECT_TRUE(r0.contains(0));
+    EXPECT_TRUE(r0.contains(3));
+    EXPECT_FALSE(r0.contains(1));
+    EXPECT_FALSE(r0.contains(2));
+
+    EXPECT_TRUE(r1.contains(1));
+    EXPECT_TRUE(r1.contains(4));
+
+    EXPECT_TRUE(r2.contains(2));
+    EXPECT_TRUE(r2.contains(5));
+
+    EXPECT_EQ(100, r0.size());
+    EXPECT_EQ(100, r1.size());
+    EXPECT_EQ(100, r2.size());
+}
+
+TEST(AddrRangeTest, ModuloOffset)
+{
+    // Range 0-300, 3 stripes, intlv_bit=0.
+    AddrRange r(0, 300, 3, 1); // matches 1, 4, 7...
+
+    // 1 is the 0th element in this range.
+    EXPECT_EQ(0, r.getOffset(1));
+    // 4 is the 1st element.
+    EXPECT_EQ(1, r.getOffset(4));
+    // 7 is the 2nd element.
+    EXPECT_EQ(2, r.getOffset(7));
+}
+
+TEST(AddrRangeTest, ModuloGranularity)
+{
+    // 2 stripes, granularity 4 (bit 2).
+    // range 0-100.
+    // stripe 0: 0-3, 8-11, 16-19...
+    // stripe 1: 4-7, 12-15, 20-23...
+    AddrRange r(0, 100, 2, 1, 2);
+
+    EXPECT_FALSE(r.contains(0)); // 0>>2 = 0. 0%2 = 0 != 1.
+    EXPECT_FALSE(r.contains(3));
+    EXPECT_TRUE(r.contains(4)); // 4>>2 = 1. 1%2 = 1 == 1.
+    EXPECT_TRUE(r.contains(7));
+    EXPECT_FALSE(r.contains(8));
+
+    // Size: 50?
+    // 0-100 = 100 bytes.
+    // 100 / 4 = 25 blocks.
+    // 25 / 2 = 12 blocks for stripe 1 (since 25 is odd, 12.5? No integers).
+    // Blocks: 0, 1, 2, ... 24.
+    // Stripe 0: 0, 2, 4... 24 (13 blocks)
+    // Stripe 1: 1, 3, 5... 23 (12 blocks)
+    // Size = 12 * 4 = 48 bytes?
+    // Let's check calculation: (100 - 0) -> compact(100) - compact(0).
+    // compact(0) = 0.
+    // compact(100): 100>>2 = 25. 25/2 = 12. 12<<2 = 48. 100&3 = 0. Total 48.
+    // Correct.
+    EXPECT_EQ(48, r.size());
+
+    // Offset of 4 should be 0.
+    EXPECT_EQ(0, r.getOffset(4));
+    // Offset of 5 should be 1.
+    EXPECT_EQ(1, r.getOffset(5));
+    // Offset of 12 (block 3, matches 3%2=1)
+    // Block 1 (4-7) -> local block 0 -> offset 0
+    // Block 3 (12-15) -> local block 1 -> offset 4
+    EXPECT_EQ(4, r.getOffset(12));
+}
+
