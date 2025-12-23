@@ -355,6 +355,113 @@ class ModuloInterleavingPolicy : public AddrMapPolicy
     }
 };
 
+/**
+ * This policy implements sparse address ranges, where specific
+ * subsets of the range are valid address holes are skipped.
+ *
+ * This is useful for modeling fragmented memory maps or systems
+ * where a single logical range covers multiple discontiguous
+ * physical ranges.
+ */
+class SparsePolicy : public AddrMapPolicy
+{
+  private:
+    std::vector<std::pair<Addr, Addr>> subRanges;
+
+  public:
+    SparsePolicy(const std::vector<std::pair<Addr, Addr>> &ranges)
+        : subRanges(ranges)
+    {
+        // TODO: Sort and merge ranges if needed?
+        // For now assume user provides sorted, non-overlapping ranges.
+    }
+
+    bool
+    contains(Addr rangeStart, Addr rangeEnd, Addr a) const override
+    {
+        // Simple linear search or binary search
+        for (const auto &r : subRanges) {
+            if (a >= r.first && a < r.second) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    Addr
+    getOffset(Addr rangeStart, Addr rangeEnd, Addr a) const override
+    {
+        Addr offset = 0;
+        for (const auto &r : subRanges) {
+            if (a >= r.first && a < r.second) {
+                return offset + (a - r.first);
+            }
+            offset += (r.second - r.first);
+        }
+        // Should not reach here if a is in range
+        return offset;
+    }
+
+    Addr
+    toInt(Addr rangeStart, Addr rangeEnd, Addr offset) const override
+    {
+        Addr currentOffset = 0;
+        for (const auto &r : subRanges) {
+            Addr size = r.second - r.first;
+            if (offset < currentOffset + size) {
+                return r.first + (offset - currentOffset);
+            }
+            currentOffset += size;
+        }
+        // exceed range
+        return subRanges.back().second; // or some error?
+    }
+
+    uint64_t
+    granularity() const override
+    {
+        return 0; // Not interleaved
+    }
+
+    uint32_t
+    stripes() const override
+    {
+        return 1; // Not interleaved
+    }
+
+    Addr
+    size(Addr rangeStart, Addr rangeEnd) const override
+    {
+        Addr total = 0;
+        for (const auto &r : subRanges) {
+            total += (r.second - r.first);
+        }
+        return total;
+    }
+
+    bool
+    isEquivalent(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        auto casted = std::dynamic_pointer_cast<SparsePolicy>(other);
+        if (!casted) {
+            return false;
+        }
+        return subRanges == casted->subRanges;
+    }
+
+    bool
+    canMerge(const std::shared_ptr<AddrMapPolicy> &other) const override
+    {
+        // Sparse ranges don't merge in the traditional interleaving sense
+        return false;
+    }
+
+    const std::vector<std::pair<Addr, Addr>> &
+    getSubRanges() const
+    {
+        return subRanges;
+    }
+};
 
 } // namespace gem5
 
