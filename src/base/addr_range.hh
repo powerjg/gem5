@@ -487,6 +487,49 @@ class AddrRange
             // same chunk
             return _policy->isEquivalent(r._policy);
         } else {
+            // Check for SparsePolicy to handle holes
+            auto p_sparse = std::dynamic_pointer_cast<SparsePolicy>(_policy);
+            auto r_sparse = std::dynamic_pointer_cast<SparsePolicy>(r._policy);
+
+            if (p_sparse) {
+                const auto &sub = p_sparse->getSubRanges();
+                if (!r.interleaved()) {
+                    // r is Flat
+                    for (const auto &s : sub) {
+                        if (std::max(s.first, r._start) <
+                            std::min(s.second, r._end)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                } else if (r_sparse) {
+                    // r is Sparse
+                    const auto &r_sub = r_sparse->getSubRanges();
+                    for (const auto &s1 : sub) {
+                        for (const auto &s2 : r_sub) {
+                            if (std::max(s1.first, s2.first) <
+                                std::min(s1.second, s2.second)) {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }
+            } else if (r_sparse) {
+                // p is not Sparse (could be Flat or Interleaved), r is Sparse
+                if (!interleaved()) {
+                    // p is Flat
+                    const auto &sub = r_sparse->getSubRanges();
+                    for (const auto &s : sub) {
+                        if (std::max(s.first, _start) <
+                            std::min(s.second, _end)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+
             // Check if both are masked interleaving.
             if (auto p = std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
                     _policy)) {

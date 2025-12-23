@@ -1681,3 +1681,79 @@ TEST(AddrRangeTest, ModuloGranularity)
     EXPECT_EQ(4, r.getOffset(12));
 }
 
+/*
+ * Sparse Policy Tests
+ */
+
+TEST(AddrRangeTest, SparseSimple)
+{
+    // Ranges: 0-100, 200-300.
+    std::vector<std::pair<Addr, Addr>> ranges = {{0, 100}, {200, 300}};
+    AddrRange r(ranges);
+
+    EXPECT_EQ(0, r.start());
+    EXPECT_EQ(300, r.end());
+    EXPECT_EQ(200, r.size()); // 100 + 100
+    EXPECT_TRUE(r.interleaved());
+
+    EXPECT_TRUE(r.contains(0));
+    EXPECT_TRUE(r.contains(99));
+    EXPECT_FALSE(r.contains(100)); // Hole check
+    EXPECT_FALSE(r.contains(199));
+    EXPECT_TRUE(r.contains(200));
+    EXPECT_TRUE(r.contains(299));
+    EXPECT_FALSE(r.contains(300));
+}
+
+TEST(AddrRangeTest, SparseOffset)
+{
+    // Ranges: 0-100, 200-300.
+    std::vector<std::pair<Addr, Addr>> ranges = {{0, 100}, {200, 300}};
+    AddrRange r(ranges);
+
+    EXPECT_EQ(0, r.getOffset(0));
+    EXPECT_EQ(99, r.getOffset(99));
+    // 200 should map to 100 (start of second chunk maps to end of first
+    // offsetwise)
+    EXPECT_EQ(100, r.getOffset(200));
+    EXPECT_EQ(101, r.getOffset(201));
+    EXPECT_EQ(199, r.getOffset(299));
+}
+
+TEST(AddrRangeTest, SparseIntersection)
+{
+    // Sparse range: 0-100, 200-300
+    std::vector<std::pair<Addr, Addr>> ranges = {{0, 100}, {200, 300}};
+    AddrRange rSparse(ranges);
+
+    // Flat range in hole: 100-200
+    AddrRange rHole(100, 200);
+    EXPECT_FALSE(rSparse.intersects(rHole));
+    EXPECT_FALSE(rHole.intersects(rSparse));
+
+    // Flat range overlapping first chunk
+    AddrRange rOverlap1(50, 150);
+    EXPECT_TRUE(rSparse.intersects(rOverlap1));
+    EXPECT_TRUE(rOverlap1.intersects(rSparse));
+
+    // Flat range overlapping second chunk
+    AddrRange rOverlap2(250, 350);
+    EXPECT_TRUE(rSparse.intersects(rOverlap2));
+    EXPECT_TRUE(rOverlap2.intersects(rSparse));
+
+    // Flat range fully containing sparse
+    AddrRange rContainer(0, 400);
+    EXPECT_TRUE(rSparse.intersects(rContainer));
+
+    // Sparse vs Sparse disjoint
+    // Sparse2: 100-200 (in hole of rSparse)
+    std::vector<std::pair<Addr, Addr>> ranges2 = {{100, 200}};
+    AddrRange rSparse2(ranges2);
+    EXPECT_FALSE(rSparse.intersects(rSparse2));
+
+    // Sparse vs Sparse overlapping
+    // Sparse3: 50-150
+    std::vector<std::pair<Addr, Addr>> ranges3 = {{50, 150}};
+    AddrRange rSparse3(ranges3);
+    EXPECT_TRUE(rSparse.intersects(rSparse3));
+}
