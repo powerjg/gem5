@@ -520,6 +520,13 @@ class ModuloInterleavingPolicy : public AddrMapPolicy
         return nullptr;
     }
 
+    std::string
+    to_string(Addr start, Addr end) const override
+    {
+        return csprintf("[%#llx:%#llx] mod %d @ %d", start, end, nStripes,
+                        intlvMatch);
+    }
+
   private:
     Addr
     toCompact(Addr a) const
