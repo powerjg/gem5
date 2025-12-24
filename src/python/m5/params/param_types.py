@@ -520,8 +520,6 @@ class AddrRange(ParamValue):
         self.intlvBits = 0
         self.intlvMatch = 0
         self.masks = []
-        self.stripes = 0
-        self.intlvLowBit = 0
 
         def handle_kwargs(self, kwargs):
             # An address range needs to have an upper limit, specified
@@ -538,11 +536,7 @@ class AddrRange(ParamValue):
             if "intlvMatch" in kwargs:
                 self.intlvMatch = int(kwargs.pop("intlvMatch"))
 
-            if "stripes" in kwargs:
-                self.stripes = int(kwargs.pop("stripes"))
-                if "intlvLowBit" in kwargs:
-                    self.intlvLowBit = int(kwargs.pop("intlvLowBit"))
-            elif "masks" in kwargs:
+            if "masks" in kwargs:
                 self.masks = [int(x) for x in list(kwargs.pop("masks"))]
                 self.intlvBits = len(self.masks)
             else:
@@ -588,14 +582,6 @@ class AddrRange(ParamValue):
             raise TypeError(f"Too many keywords: {list(kwargs.keys())}")
 
     def __str__(self):
-        if self.stripes > 0:
-            return "{}:{}:{}:{}s:{}b".format(
-                self.start,
-                self.end,
-                self.intlvMatch,
-                self.stripes,
-                self.intlvLowBit,
-            )
         if len(self.masks) == 0:
             return f"{self.start}:{self.end}"
         else:
@@ -608,10 +594,6 @@ class AddrRange(ParamValue):
 
     def size(self):
         # Divide the size by the size of the interleaving slice
-        if self.stripes > 0:
-            # Estimated size for Python side (exact size requires policy logic)
-            # This is just for printing/checking, mostly.
-            return (int(self.end) - int(self.start)) // self.stripes
         return (int(self.end) - int(self.start)) >> self.intlvBits
 
     @classmethod
@@ -662,14 +644,6 @@ class AddrRange(ParamValue):
         # Go from the Python class to the wrapped C++ class
         from _m5.range import AddrRange
 
-        if self.stripes > 0:
-            return AddrRange(
-                int(self.start),
-                int(self.end),
-                int(self.stripes),
-                int(self.intlvMatch),
-                int(self.intlvLowBit),
-            )
         return AddrRange(
             int(self.start), int(self.end), self.masks, int(self.intlvMatch)
         )
@@ -682,6 +656,70 @@ class AddrRange(ParamValue):
 
     def is_subset(self, addr_range):
         return self.getValue().isSubset(addr_range.getValue())
+
+
+class ModuloAddrRange(AddrRange):
+    def __init__(
+        self,
+        start=0,
+        end=0,
+        size=0,
+        stripes=1,
+        stripeMatch=0,
+        intlvLowBit=0,
+        **kwargs,
+    ):
+        """
+        Args:
+            start: Start address
+            end: End address
+            size: Size of the range (Provide either start + size or start + end)
+            stripes: Number of stripes (what to modulo by)
+            stripeMatch: Which of the N stripes this range should match
+            intlvLowBit: The granularity of the stripe
+        """
+        self.stripes = stripes
+        self.stripeMatch = stripeMatch
+        self.intlvLowBit = intlvLowBit
+
+        if stripeMatch >= stripes:
+            raise ValueError("stripeMatch must be less than stripes")
+
+        if intlvLowBit >= 64:
+            raise ValueError("intlvLowBit must be less than 64")
+
+        if intlvLowBit == 0:
+            warn("Address range interleaving granularity is per byte")
+
+        if size != 0:
+            if end != 0:
+                raise ValueError("Cannot provide both size and end")
+            end = start + size
+
+        super().__init__(start=start, end=end, **kwargs)
+
+    def __str__(self):
+        return "{}:{}:{}:{}s:{}b".format(
+            self.start,
+            self.end,
+            self.stripeMatch,
+            self.stripes,
+            self.intlvLowBit,
+        )
+
+    def size(self):
+        return (int(self.end) - int(self.start)) // self.stripes
+
+    def getValue(self):
+        from _m5.range import AddrRange
+
+        return AddrRange(
+            int(self.start),
+            int(self.end),
+            int(self.stripes),
+            int(self.stripeMatch),
+            int(self.intlvLowBit),
+        )
 
 
 # Boolean parameter type.  Python doesn't let you subclass bool, since
