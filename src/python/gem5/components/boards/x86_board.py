@@ -299,6 +299,15 @@ class X86Board(AbstractSystemBoard, KernelDiskWorkload, SEBinaryWorkload):
             ),
         ]
 
+        # The first range was assigned above. The last range is I/O.
+        # Add the other ranges to the E820 table.
+        for rng in self.mem_ranges[1:-1]:
+            entries.append(
+                X86E820Entry(
+                    addr=rng.start, size=f"{rng.size()}B", range_type=1
+                )
+            )
+
         # Reserve the last 16KiB of the 32-bit address space for m5ops
         entries.append(
             X86E820Entry(addr=0xFFFF0000, size="64KiB", range_type=2)
