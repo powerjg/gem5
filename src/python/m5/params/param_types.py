@@ -731,6 +731,15 @@ class SparseModuloAddrRange(ModuloAddrRange):
         end = max(r.end for r in ranges)
         super().__init__(start=start, end=end, **kwargs)
 
+    def __str__(self):
+        rngs = "+".join(str(r) for r in self.ranges)
+        return "{}:{}:{}s:{}b".format(
+            rngs,
+            self.stripeMatch,
+            self.stripes,
+            self.intlvLowBit,
+        )
+
     def getValue(self):
         from _m5.range import AddrRange
 
@@ -751,6 +760,14 @@ class SparseMaskedAddrRange(AddrRange):
         start = min(r.start for r in ranges)
         end = max(r.end for r in ranges)
         super().__init__(start=start, end=end, **kwargs)
+
+    def __str__(self):
+        rngs = "+".join(str(r) for r in self.ranges)
+        return "{}:{}:{}".format(
+            rngs,
+            self.intlvMatch,
+            ":".join(str(m) for m in self.masks),
+        )
 
     def getValue(self):
         from _m5.range import AddrRange
