@@ -76,7 +76,7 @@ class X86DemoBoard(X86Board):
 
         # The other demo boards have 4 GiB of memory, but X86Board can only
         # support up to 3 GiB.
-        memory = DualChannelDDR4_2400(size="3GiB")
+        memory = DualChannelDDR4_2400()
         processor = SimpleProcessor(
             cpu_type=CPUTypes.TIMING, isa=ISA.X86, num_cores=2
         )
