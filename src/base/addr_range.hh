@@ -193,11 +193,13 @@ class AddrRange
      */
     AddrRange(Addr start, Addr end, uint32_t stripes, uint32_t intlv_match,
               uint32_t intlv_low_bit = 0)
-        : _start(start),
-          _end(end),
-          _policy(std::make_shared<ModuloInterleavingPolicy>(
-              stripes, intlv_match, intlv_low_bit))
-    {}
+        : _start(start), _end(end), _policy(nullptr)
+    {
+        if (stripes > 1) {
+            _policy = std::make_shared<ModuloInterleavingPolicy>(
+                stripes, intlv_match, intlv_low_bit);
+        }
+    }
 
     /**
      * Create an address range with sparse sub-ranges (holes).
@@ -222,9 +224,11 @@ class AddrRange
      */
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
               const std::vector<Addr> &masks, uint8_t intlv_match)
-        : _policy(std::make_shared<SparsePolicy>(
-              ranges,
-              std::make_shared<MaskedInterleavingPolicy>(masks, intlv_match)))
+        : _policy(masks.empty()
+                      ? std::make_shared<SparsePolicy>(ranges)
+                      : std::make_shared<SparsePolicy>(
+                            ranges, std::make_shared<MaskedInterleavingPolicy>(
+                                        masks, intlv_match)))
     {
         if (ranges.empty()) {
             _start = 1;
@@ -241,9 +245,11 @@ class AddrRange
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
               uint32_t stripes, uint32_t intlv_match,
               uint32_t intlv_low_bit = 0)
-        : _policy(std::make_shared<SparsePolicy>(
-              ranges, std::make_shared<ModuloInterleavingPolicy>(
-                          stripes, intlv_match, intlv_low_bit)))
+        : _policy(stripes > 1
+                      ? std::make_shared<SparsePolicy>(
+                            ranges, std::make_shared<ModuloInterleavingPolicy>(
+                                        stripes, intlv_match, intlv_low_bit))
+                      : std::make_shared<SparsePolicy>(ranges))
     {
         if (ranges.empty()) {
             _start = 1;
