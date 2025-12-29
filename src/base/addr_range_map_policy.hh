@@ -349,6 +349,8 @@ class MaskedInterleavingPolicy : public AddrMapPolicy
             }
             seen[masked->intlvMatch] = true;
         }
+        // This means the ranges merged into a non-interleaved range.
+        // This is the only supported outcome of merging.
         return nullptr;
     }
 };
@@ -517,6 +519,8 @@ class ModuloInterleavingPolicy : public AddrMapPolicy
             }
             seen[modulo->intlvMatch] = true;
         }
+        // This means the ranges merged into a non-interleaved range.
+        // This is the only supported outcome of merging.
         return nullptr;
     }
 
@@ -851,6 +855,8 @@ class SparsePolicy : public AddrMapPolicy
     const std::vector<std::pair<Addr, Addr>> &
     getSubRanges() const
     {
+        fatal_if(subPolicy, "Cannot get subranges of sparse policy if "
+                            "subranges haven't been merged.");
         return subRanges;
     }
 };
