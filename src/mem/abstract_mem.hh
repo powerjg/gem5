@@ -125,6 +125,10 @@ class AbstractMemory : public ClockedObject
     // Whether the memory is sparse
     const bool isSparse;
 
+    // True if we should access either pmemAddr or the address in pmemMap.
+    // False if we should assume all data is 0 and skip the backing store.
+    bool accessBackingMemory;
+
     // Backdoor to access this memory.
     MemBackdoor backdoor;
 
