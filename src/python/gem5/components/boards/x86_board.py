@@ -371,16 +371,19 @@ class X86Board(AbstractSystemBoard, KernelDiskWorkload, SEBinaryWorkload):
         memory = self.get_memory()
 
         if memory.get_size() > toMemorySize("3GiB"):
-            raise Exception(
-                "X86Board currently only supports memory sizes up "
-                "to 3GiB because of the I/O hole."
-            )
-        data_range = AddrRange(memory.get_size())
-        memory.set_memory_range([data_range])
+            data_ranges = [
+                AddrRange(0x0, size=toMemorySize("3GiB")),
+                AddrRange(
+                    0x100000000, size=memory.get_size() - toMemorySize("3GiB")
+                ),
+            ]
+        else:
+            data_ranges = [AddrRange(memory.get_size())]
+
+        memory.set_memory_range(data_ranges)
 
         # Add the address range for the IO
-        self.mem_ranges = [
-            data_range,  # All data
+        self.mem_ranges = data_ranges + [
             AddrRange(0xC0000000, size=0x100000),  # For I/0
         ]
 
