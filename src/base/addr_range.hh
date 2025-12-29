@@ -218,6 +218,43 @@ class AddrRange
     }
 
     /**
+     * Create an address range with sparse sub-ranges and masked interleaving.
+     */
+    AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
+              const std::vector<Addr> &masks, uint8_t intlv_match)
+        : _policy(std::make_shared<SparsePolicy>(
+              ranges,
+              std::make_shared<MaskedInterleavingPolicy>(masks, intlv_match)))
+    {
+        if (ranges.empty()) {
+            _start = 1;
+            _end = 0;
+        } else {
+            _start = ranges.front().first;
+            _end = ranges.back().second;
+        }
+    }
+
+    /**
+     * Create an address range with sparse sub-ranges and modulo interleaving.
+     */
+    AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
+              uint32_t stripes, uint32_t intlv_match,
+              uint32_t intlv_low_bit = 0)
+        : _policy(std::make_shared<SparsePolicy>(
+              ranges, std::make_shared<ModuloInterleavingPolicy>(
+                          stripes, intlv_match, intlv_low_bit)))
+    {
+        if (ranges.empty()) {
+            _start = 1;
+            _end = 0;
+        } else {
+            _start = ranges.front().first;
+            _end = ranges.back().second;
+        }
+    }
+
+    /**
      * Legacy constructor of AddrRange
      *
      * If the user provides a non-zero value in _intlv_high_bit the
@@ -316,6 +353,31 @@ class AddrRange
     interleaved() const
     {
         return _policy != nullptr;
+    }
+
+    /**
+     * Determine if this range is a sparse range.
+     *
+     * @return true if sparse
+     *
+     * @ingroup api_addr_range
+     */
+    bool
+    isSparse() const
+    {
+        if (_policy) {
+            return dynamic_cast<SparsePolicy *>(_policy.get()) != nullptr;
+        }
+        return false;
+    }
+
+    std::vector<std::pair<Addr, Addr>>
+    subRanges() const
+    {
+        if (_policy) {
+            return dynamic_cast<SparsePolicy *>(_policy.get())->getSubRanges();
+        }
+        return std::vector<std::pair<Addr, Addr>>{{_start, _end}};
     }
 
     /**

@@ -199,3 +199,46 @@ TEST(AddrRangeMapTest, ModuloInterleavingTest)
     i = r.contains(end);
     EXPECT_EQ(i, r.end());
 }
+
+TEST(AddrRangeMapTest, NestedSparse)
+{
+    // 3-way modulo interleaved sparse range
+    // Range: 0-0x3000. Hole: 0x1000-0x2000.
+    std::vector<std::pair<Addr, Addr>> chunks = {{0, 0x1000},
+                                                 {0x2000, 0x3000}};
+
+    AddrRangeMap<int> r;
+
+    // Insert 0, 1, 2 matches
+    r.insert(AddrRange(chunks, 3, 0), 0);
+    r.insert(AddrRange(chunks, 3, 1), 1);
+    r.insert(AddrRange(chunks, 3, 2), 2);
+
+    // Verify mapping
+    auto it = r.contains(0x0);
+    ASSERT_NE(it, r.end());
+    EXPECT_EQ(it->second, 0);
+
+    it = r.contains(0x1);
+    ASSERT_NE(it, r.end());
+    EXPECT_EQ(it->second, 1);
+
+    it = r.contains(0x2000); // Logical 4096 -> Match 1
+    ASSERT_NE(it, r.end());
+    EXPECT_EQ(it->second, 1);
+
+    it = r.contains(0x2001); // Logical 4097 -> Match 2
+    ASSERT_NE(it, r.end());
+    EXPECT_EQ(it->second, 2);
+
+    it = r.contains(0x2002); // Logical 4098 -> Match 0
+    ASSERT_NE(it, r.end());
+    EXPECT_EQ(it->second, 0);
+
+    // Verify hole
+    it = r.contains(0x1000);
+    EXPECT_EQ(it, r.end());
+
+    it = r.contains(0x1500);
+    EXPECT_EQ(it, r.end());
+}

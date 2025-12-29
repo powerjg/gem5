@@ -143,6 +143,23 @@ init_range(py::module_ &m_native)
         .def(py::init<const std::vector<AddrRange> &>())
         .def(py::init<Addr, Addr, uint8_t, uint8_t, uint8_t, uint8_t>())
         .def(py::init<Addr, Addr, uint32_t, uint32_t, uint32_t>())
+        .def(py::init([](const std::vector<AddrRange> &ranges,
+                         const std::vector<Addr> &masks, uint8_t intlv_match) {
+            std::vector<std::pair<Addr, Addr>> chunks;
+            for (const auto &r : ranges) {
+                chunks.emplace_back(r.start(), r.end());
+            }
+            return new AddrRange(chunks, masks, intlv_match);
+        }))
+        .def(py::init([](const std::vector<AddrRange> &ranges,
+                         uint32_t stripes, uint32_t intlv_match,
+                         uint32_t intlv_low_bit) {
+            std::vector<std::pair<Addr, Addr>> chunks;
+            for (const auto &r : ranges) {
+                chunks.emplace_back(r.start(), r.end());
+            }
+            return new AddrRange(chunks, stripes, intlv_match, intlv_low_bit);
+        }))
 
         .def("__str__", &AddrRange::to_string)
 

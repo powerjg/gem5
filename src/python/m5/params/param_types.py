@@ -722,6 +722,43 @@ class ModuloAddrRange(AddrRange):
         )
 
 
+class SparseModuloAddrRange(ModuloAddrRange):
+    def __init__(self, ranges, **kwargs):
+        if not ranges:
+            raise ValueError("Ranges cannot be empty")
+        self.ranges = ranges
+        start = min(r.start for r in ranges)
+        end = max(r.end for r in ranges)
+        super().__init__(start=start, end=end, **kwargs)
+
+    def getValue(self):
+        from _m5.range import AddrRange
+
+        cxx_ranges = [r.getValue() for r in self.ranges]
+        return AddrRange(
+            cxx_ranges,
+            int(self.stripes),
+            int(self.stripeMatch),
+            int(self.intlvLowBit),
+        )
+
+
+class SparseMaskedAddrRange(AddrRange):
+    def __init__(self, ranges, **kwargs):
+        if not ranges:
+            raise ValueError("Ranges cannot be empty")
+        self.ranges = ranges
+        start = min(r.start for r in ranges)
+        end = max(r.end for r in ranges)
+        super().__init__(start=start, end=end, **kwargs)
+
+    def getValue(self):
+        from _m5.range import AddrRange
+
+        cxx_ranges = [r.getValue() for r in self.ranges]
+        return AddrRange(cxx_ranges, self.masks, int(self.intlvMatch))
+
+
 # Boolean parameter type.  Python doesn't let you subclass bool, since
 # it doesn't want to let you create multiple instances of True and
 # False.  Thus this is a little more complicated than String.
