@@ -208,10 +208,6 @@ PhysicalMemory::createBackingStore(
     AddrRange range, const std::vector<AbstractMemory *> &_memories,
     bool conf_table_reported, bool in_addr_map, bool kvm_map, bool for_sparse)
 {
-    panic_if(range.interleaved(),
-             "Cannot create backing store for interleaved range %s\n",
-              range.to_string());
-
     if (range.isSparse()) {
         for (auto const &r : range.subRanges()) {
             createBackingStore(AddrRange(r.first, r.second), _memories,
@@ -220,6 +216,10 @@ PhysicalMemory::createBackingStore(
         }
         return;
     }
+
+    panic_if(range.interleaved(),
+             "Cannot create backing store for interleaved range %s\n",
+             range.to_string());
 
     // perform the actual mmap
     DPRINTF(AddrRanges, "Creating backing store for range %s with size %d\n",
