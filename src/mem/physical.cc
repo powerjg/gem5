@@ -144,40 +144,43 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
     for (const auto& r : addrMap) {
         // simply skip past all memories that are null and hence do
         // not need any backing store
-        if (!r.second->isNull()) {
-            // if the range is interleaved then save it for now
-            if (r.first.interleaved()) {
-                // if we already got interleaved ranges that are not
-                // part of the same range, then first do a merge
-                // before we add the new one
-                if (!intlv_ranges.empty() &&
-                    !intlv_ranges.back().mergesWith(r.first)) {
-                    AddrRange merged_range(intlv_ranges);
+        if (r.second->isNull()) {
+            continue;
+        }
 
-                    AbstractMemory *f = curr_memories.front();
-                    for (const auto& c : curr_memories)
-                        if (f->isConfReported() != c->isConfReported() ||
-                            f->isInAddrMap() != c->isInAddrMap() ||
-                            f->isKvmMap() != c->isKvmMap())
-                            fatal("Inconsistent flags in an interleaved "
-                                  "range\n");
+        // if the range is interleaved then save it for now
+        if (r.first.interleaved()) {
+            // if we already got interleaved ranges that are not
+            // part of the same range, then first do a merge
+            // before we add the new one
+            if (!intlv_ranges.empty() &&
+                !intlv_ranges.back().mergesWith(r.first)) {
+                AddrRange merged_range(intlv_ranges);
 
-                    createBackingStore(merged_range, curr_memories,
-                                       f->isConfReported(), f->isInAddrMap(),
-                                       f->isKvmMap());
-
-                    intlv_ranges.clear();
-                    curr_memories.clear();
+                AbstractMemory *f = curr_memories.front();
+                for (const auto &c : curr_memories) {
+                    if (f->isConfReported() != c->isConfReported() ||
+                        f->isInAddrMap() != c->isInAddrMap() ||
+                        f->isKvmMap() != c->isKvmMap()) {
+                        fatal("Inconsistent flags in an interleaved "
+                              "range\n");
+                    }
                 }
-                intlv_ranges.push_back(r.first);
-                curr_memories.push_back(r.second);
-            } else {
-                std::vector<AbstractMemory*> single_memory{r.second};
-                createBackingStore(r.first, single_memory,
-                                   r.second->isConfReported(),
-                                   r.second->isInAddrMap(),
-                                   r.second->isKvmMap());
+
+                createBackingStore(merged_range, curr_memories,
+                                   f->isConfReported(), f->isInAddrMap(),
+                                   f->isKvmMap());
+
+                intlv_ranges.clear();
+                curr_memories.clear();
             }
+            intlv_ranges.push_back(r.first);
+            curr_memories.push_back(r.second);
+        } else {
+            std::vector<AbstractMemory *> single_memory{r.second};
+            createBackingStore(r.first, single_memory,
+                               r.second->isConfReported(),
+                               r.second->isInAddrMap(), r.second->isKvmMap());
         }
     }
 
@@ -202,12 +205,21 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
 
 void
 PhysicalMemory::createBackingStore(
-        AddrRange range, const std::vector<AbstractMemory*>& _memories,
-        bool conf_table_reported, bool in_addr_map, bool kvm_map)
+    AddrRange range, const std::vector<AbstractMemory *> &_memories,
+    bool conf_table_reported, bool in_addr_map, bool kvm_map, bool for_sparse)
 {
     panic_if(range.interleaved(),
              "Cannot create backing store for interleaved range %s\n",
               range.to_string());
+
+    if (range.isSparse()) {
+        for (auto const &r : range.subRanges()) {
+            createBackingStore(AddrRange(r.first, r.second), _memories,
+                               conf_table_reported, in_addr_map, kvm_map,
+                               true);
+        }
+        return;
+    }
 
     // perform the actual mmap
     DPRINTF(AddrRanges, "Creating backing store for range %s with size %d\n",
@@ -263,7 +275,11 @@ PhysicalMemory::createBackingStore(
     for (const auto& m : _memories) {
         DPRINTF(AddrRanges, "Mapping memory %s to backing store\n",
                 m->name());
-        m->setBackingStore(pmem);
+        if (for_sparse) {
+            m->setBackingStore(pmem, range);
+        } else {
+            m->setBackingStore(pmem, AddrRange());
+        }
     }
 }
 

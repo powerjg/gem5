@@ -1799,3 +1799,85 @@ TEST(AddrRangeTest, ConstructorMergeTest)
     std::vector<AddrRange> mismatch = {m1, m3};
     EXPECT_ANY_THROW({ AddrRange r(mismatch); });
 }
+
+TEST(AddrRangeTest, NestedSparseTest)
+{
+    // 1. Sparse + Modulo
+    // Range: 0-0x3000. Hole: 0x1000-0x2000.
+    // Valid chunks: [0, 0x1000), [0x2000, 0x3000)
+    // Interleaving: 3 stripes, match 0.
+    std::vector<std::pair<Addr, Addr>> chunks = {{0, 0x1000},
+                                                 {0x2000, 0x3000}};
+    AddrRange r(chunks, 3, 0); // stripes=3, match=0
+
+    // Check contains
+    // Logical Interleaving:
+    // 0x0 -> Logical 0. 0%3=0. Match.
+    EXPECT_TRUE(r.contains(0x0));
+    EXPECT_FALSE(r.contains(0x1));    // 1 mod 3 != 0
+    EXPECT_FALSE(r.contains(0x1000)); // Hole
+    EXPECT_FALSE(r.contains(0x1500)); // Hole
+    // 0x2000 -> Logical 4096. 4096 mod 3 = 1. Match 0 -> False.
+    EXPECT_FALSE(r.contains(0x2000));
+    // 0x2001 -> Logical 4097. 4097 mod 3 = 2. Match 0 -> False.
+    EXPECT_FALSE(r.contains(0x2001));
+    // 0x2002 -> Logical 4098. 4098 mod 3 = 0. Match 0 -> True.
+    EXPECT_TRUE(r.contains(0x2002));
+
+    // Check size
+    // Chunk 1: [0, 0x1000). Size: 4096/3 = 1365.
+    // Chunk 2: [0x2000, 0x3000).
+    //   toCompact(0x3000) = 12288/3 = 4096.
+    //   toCompact(0x2000) = 8192/3 = 2730.
+    //   Size: 4096 - 2730 = 1366.
+    // Total size = 1365 + 1366 = 2731.
+    EXPECT_EQ(r.size(), 2731);
+
+    // 2. Sparse + Masked
+    // Mask: bit 0 (value 1). Match 1 (odd addresses).
+    // Valid chunks: [0, 10), [20, 30).
+    std::vector<std::pair<Addr, Addr>> chunks2 = {{0, 10}, {20, 30}};
+    AddrRange r2(chunks2, std::vector<Addr>{1}, 1);
+
+    EXPECT_FALSE(r2.contains(0));  // Even
+    EXPECT_TRUE(r2.contains(1));   // Odd
+    EXPECT_FALSE(r2.contains(15)); // Hole
+    EXPECT_TRUE(r2.contains(21));  // Odd in chunk 2
+
+    // Size: 5 + 5 = 10.
+    EXPECT_EQ(r2.size(), 10);
+}
+
+TEST(AddrRangeTest, SparseMergeTest)
+{
+    // Define chunks [0, 100), [200, 300)
+    std::vector<std::pair<Addr, Addr>> chunks = {{0, 100}, {200, 300}};
+
+    // Create 2 ranges with Modulo(2) interleaving
+    // range1: Match 0
+    AddrRange r1(chunks, 2, 0);
+    // range2: Match 1
+    AddrRange r2(chunks, 2, 1);
+
+    // Merge them
+    AddrRange merged(std::vector<AddrRange>{r1, r2});
+
+    // Check if merged range is Sparse + Flat (no sub-policy)
+    // Logical addresses:
+    // [0, 100) -> Logical [0, 100)
+    // [200, 300) -> Logical [100, 200)
+    // Total logical size = 200.
+
+    EXPECT_EQ(merged.size(), 200);
+    EXPECT_TRUE(merged.contains(0));    // Chunk 1 start
+    EXPECT_TRUE(merged.contains(99));   // Chunk 1 end
+    EXPECT_FALSE(merged.contains(150)); // Hole
+    EXPECT_TRUE(merged.contains(200));  // Chunk 2 start
+    EXPECT_TRUE(merged.contains(299));  // Chunk 2 end
+
+    // Verify interleaving property
+    // Merged Modulo(2,0) + Modulo(2,1) -> Flat.
+    // So "interleaved()" should be true because it's SparsePolicy?
+    // SparsePolicy implies interleaving mechanism is active (remapping).
+    EXPECT_TRUE(merged.interleaved());
+}

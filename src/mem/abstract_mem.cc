@@ -42,6 +42,7 @@
 
 #include <vector>
 
+#include "base/addr_range_map.hh"
 #include "base/loader/memory_image.hh"
 #include "base/loader/object_file.hh"
 #include "cpu/thread_context.hh"
@@ -56,15 +57,22 @@ namespace gem5
 namespace memory
 {
 
-AbstractMemory::AbstractMemory(const Params &p) :
-    ClockedObject(p), range(p.range), pmemAddr(NULL),
-    backdoor(params().range, nullptr,
-             (MemBackdoor::Flags)(p.writeable ?
-                 MemBackdoor::Readable | MemBackdoor::Writeable :
-                 MemBackdoor::Readable)),
-    confTableReported(p.conf_table_reported), inAddrMap(p.in_addr_map),
-    kvmMap(p.kvm_map), writeable(p.writeable), collectStats(p.collect_stats),
-    _system(NULL), stats(*this)
+AbstractMemory::AbstractMemory(const Params &p)
+    : ClockedObject(p),
+      range(p.range),
+      pmemAddr(nullptr),
+      isSparse(p.range.isSparse()),
+      backdoor(params().range, nullptr,
+               (MemBackdoor::Flags)(p.writeable ? MemBackdoor::Readable |
+                                                      MemBackdoor::Writeable
+                                                : MemBackdoor::Readable)),
+      confTableReported(p.conf_table_reported),
+      inAddrMap(p.in_addr_map),
+      kvmMap(p.kvm_map),
+      writeable(p.writeable),
+      collectStats(p.collect_stats),
+      _system(NULL),
+      stats(*this)
 {
     panic_if(!range.valid() || !range.size(),
              "Memory range %s must be valid with non-zero size.",
@@ -103,7 +111,7 @@ AbstractMemory::initState()
 }
 
 void
-AbstractMemory::setBackingStore(uint8_t* pmem_addr)
+AbstractMemory::setBackingStore(uint8_t *pmem_addr, const AddrRange &_range)
 {
     // If there was an existing backdoor, let everybody know it's going away.
     if (backdoor.ptr())
@@ -112,7 +120,13 @@ AbstractMemory::setBackingStore(uint8_t* pmem_addr)
     // The back door can't handle interleaved memory.
     backdoor.ptr(range.interleaved() ? nullptr : pmem_addr);
 
-    pmemAddr = pmem_addr;
+    if (range.isSparse()) {
+        assert(_range.valid());
+        pmemMap.insert(_range, pmem_addr);
+        assert(pmemAddr == nullptr);
+    } else {
+        pmemAddr = pmem_addr;
+    }
 }
 
 AbstractMemory::MemStats::MemStats(AbstractMemory &_mem)

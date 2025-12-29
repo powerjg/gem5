@@ -180,9 +180,9 @@ class PhysicalMemory : public Serializable
      * @param kvm_map Should KVM map this memory for the guest
      */
     void createBackingStore(AddrRange range,
-                            const std::vector<AbstractMemory*>& _memories,
-                            bool conf_table_reported,
-                            bool in_addr_map, bool kvm_map);
+                            const std::vector<AbstractMemory *> &_memories,
+                            bool conf_table_reported, bool in_addr_map,
+                            bool kvm_map, bool for_sparse = false);
 
   public:
 
