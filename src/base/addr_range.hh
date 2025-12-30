@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012, 2014, 2017-2019, 2021 Arm Limited
+ * Copyright (c) 2026 Google Inc.
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -98,6 +99,9 @@ class AddrRange
 
     // The dummy parameter Dummy distinguishes this from the other two argument
     // constructor which takes two Addrs.
+    // This constructor takes multiple address ranges and merges them into a
+    // single address range, if possible. If not possible, there is a fatal
+    // error.
     template <class Iterator>
     AddrRange(Dummy, Iterator begin_it, Iterator end_it)
         : _start(1), _end(0), _policy(nullptr)
@@ -131,14 +135,15 @@ class AddrRange
     }
 
   public:
-
     /**
+     * Default constructor, creates an invalid address range.
+     *
      * @ingroup api_addr_range
      */
     AddrRange() : _start(1), _end(0), _policy(nullptr) {}
 
     /**
-     * Construct an address range
+     * Construct a masked interleaved address range.
      *
      * If the user provides a non empty vector of masks then the
      * address range is interleaved. Each mask determines a set of
@@ -184,12 +189,19 @@ class AddrRange
     /**
      * Create an address range with modulo-based interleaving.
      *
+     * If the user provides a stripe count of 1, the address range is not
+     * interleaved.
+     * Using modulo instead of interleaving allows for non-power
+     * of 2 stripe counts.
+     *
      * @param start The start address of the range.
      * @param end The end address of the range.
      * @param stripes The number of stripes (channels).
      * @param intlv_match The stripe index for this range.
      * @param intlv_low_bit The bit position of the interleaving granularity
-                            (log2).
+     *                      (log2).
+     *
+     * @ingroup api_addr_range
      */
     AddrRange(Addr start, Addr end, uint32_t stripes, uint32_t intlv_match,
               uint32_t intlv_low_bit = 0)
@@ -204,8 +216,15 @@ class AddrRange
     /**
      * Create an address range with sparse sub-ranges (holes).
      *
+     * This constructor is useful for creating address ranges that are not
+     * contiguous, such as the I/O hole in x86.
+     * This constructor only enables "simple" sparse ranges, i.e. no
+     * interleaving.
+     *
      * @param ranges Vector of valid address chunks (start, end).
      *               Must be sorted and non-overlapping.
+     *
+     * @ingroup api_addr_range
      */
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges)
         : _policy(std::make_shared<SparsePolicy>(ranges))
@@ -221,6 +240,17 @@ class AddrRange
 
     /**
      * Create an address range with sparse sub-ranges and masked interleaving.
+     *
+     * This constructor will create an interleaved address range in the same
+     * way as the masked interleaving constructor, but with sparse sub-ranges.
+     * If the masks are empty, the address range will be sparse only.
+     *
+     * @param ranges Vector of valid address chunks (start, end).
+     *               Must be sorted and non-overlapping.
+     * @param masks The input vector of masks.
+     * @param intlv_match The matching value of the xor operations.
+     *
+     * @ingroup api_addr_range
      */
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
               const std::vector<Addr> &masks, uint8_t intlv_match)
@@ -241,6 +271,18 @@ class AddrRange
 
     /**
      * Create an address range with sparse sub-ranges and modulo interleaving.
+     *
+     * This constructor will create an interleaved address range in the same
+     * way as the modulo interleaving constructor, but with sparse sub-ranges.
+     * If the stripes are 1, the address range will be sparse only.
+     *
+     * @param ranges Vector of valid address chunks (start, end).
+     *               Must be sorted and non-overlapping.
+     * @param stripes The number of stripes (channels).
+     * @param intlv_match The matching value of the modulo operation.
+     * @param intlv_low_bit The lowest bit to use for the modulo operation.
+     *
+     * @ingroup api_addr_range
      */
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
               uint32_t stripes, uint32_t intlv_match,
@@ -329,6 +371,14 @@ class AddrRange
         }
     }
 
+    /**
+     * Create a simple address range without interleaving.
+     *
+     * @param _start Start address of the range.
+     * @param _end End address of the range.
+     *
+     * @ingroup api_addr_range
+     */
     AddrRange(Addr _start, Addr _end)
         : _start(_start), _end(_end), _policy(nullptr)
     {}
