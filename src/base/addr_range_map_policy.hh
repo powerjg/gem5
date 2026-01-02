@@ -564,7 +564,7 @@ class SparsePolicy : public AddrMapPolicy
     SparsePolicy(const std::vector<std::pair<Addr, Addr>> &ranges,
                  const std::shared_ptr<AddrMapPolicy> &policy = nullptr)
         : subRanges(ranges), subPolicy(policy)
-    {}
+    { std::sort(subRanges.begin(), subRanges.end()); }
 
     std::shared_ptr<AddrMapPolicy>
     createMerged(const std::vector<std::shared_ptr<AddrMapPolicy>> &policies)
@@ -853,11 +853,7 @@ class SparsePolicy : public AddrMapPolicy
 
     const std::vector<std::pair<Addr, Addr>> &
     getSubRanges() const
-    {
-        fatal_if(subPolicy, "Cannot get subranges of sparse policy if "
-                            "subranges haven't been merged.");
-        return subRanges;
-    }
+    { return subRanges; }
 };
 
 } // namespace gem5
