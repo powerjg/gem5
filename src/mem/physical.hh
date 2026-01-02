@@ -144,6 +144,10 @@ class PhysicalMemory : public Serializable
     // Global address map
     AddrRangeMap<AbstractMemory*, 1> addrMap;
 
+    // Valid address map. Used to quickly check if an address is valid.
+    // This ignores all interleaving, unlike the addrMap above.
+    std::vector<std::pair<Addr, Addr>> validAddrMap;
+
     // All address-mapped memories
     std::vector<AbstractMemory*> memories;
 

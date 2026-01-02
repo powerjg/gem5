@@ -113,6 +113,9 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
             fatal_if(addrMap.insert(m->getAddrRange(), m) == addrMap.end(),
                      "Memory address range for %s is overlapping\n",
                      m->name());
+
+            validAddrMap.emplace_back(m->getAddrRange().start(),
+                                      m->getAddrRange().end());
         } else {
             // this type of memory is used e.g. as reference memory by
             // Ruby, and they also needs a backing store, but should
@@ -201,6 +204,14 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
                            f->isConfReported(), f->isInAddrMap(),
                            f->isKvmMap());
     }
+
+    // Clean up the valid address map
+    // 1. Sort: Pairs are compared by 'first', then 'second'
+    std::sort(validAddrMap.begin(), validAddrMap.end());
+    // 2. Unique: Move consecutive identical duplicates to the end
+    auto last = std::unique(validAddrMap.begin(), validAddrMap.end());
+    // 3. Erase: Shrink the vector to remove the "garbage" at the end
+    validAddrMap.erase(last, validAddrMap.end());
 }
 
 void
@@ -293,7 +304,18 @@ PhysicalMemory::~PhysicalMemory()
 bool
 PhysicalMemory::isMemAddr(Addr addr) const
 {
-    return addrMap.contains(addr) != addrMap.end();
+    // This is a hot function. Instead of doing anything fancy, since we always
+    // have few ranges, we have simple linear scan of the non-interleaved
+    // address ranges.
+    for (const auto &range : validAddrMap) {
+        if (addr >= range.first && addr <= range.second) {
+            return true;
+        }
+        if (addr < range.first) {
+            return false;
+        }
+    }
+    return false;
 }
 
 AddrRangeList
