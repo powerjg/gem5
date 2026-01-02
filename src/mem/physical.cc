@@ -114,8 +114,16 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
                      "Memory address range for %s is overlapping\n",
                      m->name());
 
-            validAddrMap.emplace_back(m->getAddrRange().start(),
-                                      m->getAddrRange().end());
+            if (m->getAddrRange().isSparse()) {
+                const auto &sub_ranges = m->getAddrRange().subRanges();
+                panic_if(sub_ranges.empty(),
+                         "Sparse memory range has no subranges\n");
+                validAddrMap.insert(validAddrMap.end(), sub_ranges.begin(),
+                                    sub_ranges.end());
+            } else {
+                validAddrMap.emplace_back(m->getAddrRange().start(),
+                                          m->getAddrRange().end());
+            }
         } else {
             // this type of memory is used e.g. as reference memory by
             // Ruby, and they also needs a backing store, but should
@@ -205,6 +213,7 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
                            f->isKvmMap());
     }
 
+    panic_if(validAddrMap.empty(), "No valid address ranges found\n");
     // Clean up the valid address map
     // 1. Sort: Pairs are compared by 'first', then 'second'
     std::sort(validAddrMap.begin(), validAddrMap.end());
@@ -212,6 +221,13 @@ PhysicalMemory::PhysicalMemory(const std::string &_name,
     auto last = std::unique(validAddrMap.begin(), validAddrMap.end());
     // 3. Erase: Shrink the vector to remove the "garbage" at the end
     validAddrMap.erase(last, validAddrMap.end());
+
+    if (debug::AddrRanges) {
+        for (const auto &r : validAddrMap) {
+            DPRINTF(AddrRanges, "Valid address range: %#x - %#x\n", r.first,
+                    r.second);
+        }
+    }
 }
 
 void
@@ -220,6 +236,9 @@ PhysicalMemory::createBackingStore(
     bool conf_table_reported, bool in_addr_map, bool kvm_map, bool for_sparse)
 {
     if (range.isSparse()) {
+        // If it's sparse, then create a separate backing store for each
+        // subrange. We assume that by this point the subranges are not
+        // interleaved.
         for (auto const &r : range.subRanges()) {
             createBackingStore(AddrRange(r.first, r.second), _memories,
                                conf_table_reported, in_addr_map, kvm_map,
@@ -287,8 +306,11 @@ PhysicalMemory::createBackingStore(
         DPRINTF(AddrRanges, "Mapping memory %s to backing store\n",
                 m->name());
         if (for_sparse) {
+            // If it's sparse, tell the memory what range this backing store
+            // is for.
             m->setBackingStore(pmem, range);
         } else {
+            // If it's not sparse, the memory will ignore the range.
             m->setBackingStore(pmem, AddrRange());
         }
     }

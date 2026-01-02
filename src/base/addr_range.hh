@@ -297,8 +297,9 @@ class AddrRange
             _start = 1;
             _end = 0;
         } else {
-            _start = ranges.front().first;
-            _end = ranges.back().second;
+            // The policy sorts the ranges, so get the start/end from there.
+            _start = subRanges().front().first;
+            _end = subRanges().back().second;
         }
     }
 
