@@ -1813,18 +1813,18 @@ TEST(AddrRangeTest, NestedSparseTest)
     AddrRange r(chunks, 3, 0); // stripes=3, match=0
 
     // Check contains
-    // Logical Interleaving:
-    // 0x0 -> Logical 0. 0%3=0. Match.
+    // System Interleaving:
+    // 0x0 -> System 0. 0%3=0. Match.
     EXPECT_TRUE(r.contains(0x0));
     EXPECT_FALSE(r.contains(0x1));    // 1 mod 3 != 0
     EXPECT_FALSE(r.contains(0x1000)); // Hole
     EXPECT_FALSE(r.contains(0x1500)); // Hole
-    // 0x2000 -> Logical 4096. 4096 mod 3 = 1. Match 0 -> False.
+    // 0x2000 -> System 8192. 8192 mod 3 = 2. Match 0 -> False.
     EXPECT_FALSE(r.contains(0x2000));
-    // 0x2001 -> Logical 4097. 4097 mod 3 = 2. Match 0 -> False.
-    EXPECT_FALSE(r.contains(0x2001));
-    // 0x2002 -> Logical 4098. 4098 mod 3 = 0. Match 0 -> True.
-    EXPECT_TRUE(r.contains(0x2002));
+    // 0x2001 -> System 8193. 8193 mod 3 = 0. Match 0 -> True.
+    EXPECT_TRUE(r.contains(0x2001));
+    // 0x2002 -> System 8194. 8194 mod 3 = 1. Match 0 -> False.
+    EXPECT_FALSE(r.contains(0x2002));
 
     // Check size
     // Note: AddrRange delegates size calculation to the policy over the
@@ -1882,4 +1882,47 @@ TEST(AddrRangeTest, SparseMergeTest)
     EXPECT_FALSE(merged.interleaved());
     // But isSparse() should be true
     EXPECT_TRUE(merged.isSparse());
+}
+
+TEST(AddrRangeTest, Phase8RegressionTest)
+{
+    // Simulate DualChannel Setup: 0-3GB, 4GB-End (16GB total -> 33GB Top)
+    // 0-3GB: 0x0 - 0xC0000000
+    // 4GB-34GB: 0x100000000 - 0x880000000 (Size 30GB)
+
+    std::vector<std::pair<Addr, Addr>> chunks;
+    chunks.emplace_back(0, 0xc0000000);
+    chunks.emplace_back(0x100000000, 0x840000000);
+
+    // Create Masks for 2 channels (1 bit, bit 6 for atom size 64)
+    std::vector<Addr> masks = {1ULL << 6}; // 64-byte interleaving
+
+    // Ctrl 0 (Match 0)
+    AddrRange r0(chunks, masks, 0);
+    // Ctrl 1 (Match 1)
+    AddrRange r1(chunks, masks, 1);
+
+    // 1. Verify Properties
+    EXPECT_TRUE(r0.isSparse()) << "r0 should be sparse";
+    EXPECT_TRUE(r1.isSparse()) << "r1 should be sparse";
+    EXPECT_TRUE(r0.interleaved());
+    EXPECT_TRUE(r1.interleaved());
+    EXPECT_EQ(r0.decompose().size(), 2);
+
+    // 2. Verify Merge
+    EXPECT_TRUE(r0.mergesWith(r1)) << "Ranges should strictly merge";
+
+    std::vector<AddrRange> rangeList = {r0, r1};
+    AddrRange merged(rangeList);
+
+    // The merged range should be Sparse (because it has chunks)
+    // and Flat (because masks merged).
+    EXPECT_TRUE(merged.isSparse())
+        << "Merged result MUST be sparse if chunks exist";
+    EXPECT_EQ(merged.decompose().size(), 2);
+    EXPECT_FALSE(merged.interleaved());
+
+    // Verify String output format
+    // Expected: Sparse[0:0x840000000]:[0:0xc0000000]:[0x100000000:0x840000000]
+    std::cout << "Merged String: " << merged.to_string() << std::endl;
 }

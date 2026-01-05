@@ -223,17 +223,17 @@ TEST(AddrRangeMapTest, NestedSparse)
     ASSERT_NE(it, r.end());
     EXPECT_EQ(it->second, 1);
 
-    it = r.contains(0x2000); // Logical 4096 -> Match 1
-    ASSERT_NE(it, r.end());
-    EXPECT_EQ(it->second, 1);
-
-    it = r.contains(0x2001); // Logical 4097 -> Match 2
+    it = r.contains(0x2000); // System 8192 -> Match 2
     ASSERT_NE(it, r.end());
     EXPECT_EQ(it->second, 2);
 
-    it = r.contains(0x2002); // Logical 4098 -> Match 0
+    it = r.contains(0x2001); // System 8193 -> Match 0
     ASSERT_NE(it, r.end());
     EXPECT_EQ(it->second, 0);
+
+    it = r.contains(0x2002); // System 8194 -> Match 1
+    ASSERT_NE(it, r.end());
+    EXPECT_EQ(it->second, 1);
 
     // Verify hole
     it = r.contains(0x1000);

@@ -443,6 +443,49 @@ class AddrRange
     }
 
     /**
+     * Decompose the address range into a vector of simple address ranges.
+     *
+     * If the address range is sparse, it will return a vector where each
+     * element corresponds to a contiguous valid chunk of the sparse range.
+     * If the range has an interleaving policy, each decomposed range will
+     * strictly inherit the policy configuration.
+     *
+     * @return Vector of decomposed address ranges.
+     *
+     * @ingroup api_addr_range
+     */
+    std::vector<AddrRange>
+    decompose() const
+    {
+        if (_chunks.empty()) {
+            return {*this};
+        }
+
+        std::vector<AddrRange> decomposed;
+        for (const auto &chunk : _chunks) {
+            if (!_policy) {
+                decomposed.emplace_back(chunk.first, chunk.second);
+            } else {
+                if (auto masked =
+                        std::dynamic_pointer_cast<MaskedInterleavingPolicy>(
+                            _policy)) {
+                    decomposed.emplace_back(chunk.first, chunk.second,
+                                            masked->getMasks(),
+                                            masked->getMatch());
+                } else if (auto modulo = std::dynamic_pointer_cast<
+                               ModuloInterleavingPolicy>(_policy)) {
+                    decomposed.emplace_back(
+                        chunk.first, chunk.second, modulo->getStripes(),
+                        modulo->getMatch(), modulo->getLowBit());
+                } else {
+                    panic("Unknown policy type in AddrRange::decompose");
+                }
+            }
+        }
+        return decomposed;
+    }
+
+    /**
      * Determing the interleaving granularity of the range.
      *
      * @return The size of the regions created by the interleaving bits
@@ -536,10 +579,6 @@ class AddrRange
     std::string
     to_string() const
     {
-        if (_policy && !isSparse()) {
-            return _policy->to_string(_start, _end);
-        }
-
         std::string s;
         if (isSparse()) {
             s = csprintf("Sparse[%#llx:%#llx]", _start, _end);
@@ -618,7 +657,7 @@ class AddrRange
             if (_policy && !r._policy) {
                 return _policy->checkIntersection(_start, _end, r._start,
                                                   r._end, nullptr);
-            } else if (!r._policy && _policy) {
+            } else if (!_policy && r._policy) {
                 return r._policy->checkIntersection(_start, _end, r._start,
                                                     r._end, nullptr);
             } else if (_policy && r._policy) {
@@ -822,29 +861,29 @@ class AddrRange
     bool
     contains(const Addr& a) const
     {
-        // Legacy behavior for non-sparse ranges
-        if (!isSparse()) {
+        // Check if address is in the range/chunks
+        if (isSparse()) {
+            bool in_chunks = false;
+            for (const auto &chunk : _chunks) {
+                if (a >= chunk.first && a < chunk.second) {
+                    in_chunks = true;
+                    break;
+                }
+            }
+            if (!in_chunks) {
+                return false;
+            }
+        } else {
             if (a < _start || a >= _end) {
                 return false;
             }
-            // If policy exists, it expects System Address 'a'
-            if (_policy) {
-                return _policy->contains(_start, _end, a);
-            }
-            return true;
         }
 
-        // First check validity in chunks/range
-        auto result = toLogical(a);
-        if (!result.first) {
-            return false;
-        }
-
-        Addr logicalAddr = result.second;
+        // Check policy on System Address 'a'
         if (_policy) {
-            // Policy checks logical address space
-            return _policy->contains(0, logicalSize(), logicalAddr);
+            return _policy->contains(_start, _end, a);
         }
+
         return true;
     }
 
@@ -912,16 +951,45 @@ class AddrRange
             return a - _start;
         }
 
-        auto result = toLogical(a);
-        if (!result.first) {
+        Addr offset = 0;
+        bool found = false;
+
+        for (const auto &chunk : _chunks) {
+            if (a >= chunk.second) {
+                // Address is after this chunk, add full chunk contribution
+                if (_policy) {
+                    offset += _policy->getOffset(chunk.first, chunk.second,
+                                                 chunk.second);
+                } else {
+                    offset += (chunk.second - chunk.first);
+                }
+            } else if (a >= chunk.first) {
+                // Address is in this chunk
+                if (_policy) {
+                    offset += _policy->getOffset(chunk.first, chunk.second, a);
+                } else {
+                    offset += (a - chunk.first);
+                }
+                found = true;
+                break;
+            } else {
+                // Address is before this chunk (and after previous), so it's
+                // in a hole Since chunks are sorted, we can stop or fail? But
+                // we loop until we find it. If a < chunk.first, we shouldn't
+                // be here if we checked 'contains' first? But getOffset checks
+                // bounds itself. If a < chunk.first and we haven't found it
+                // yet, it implies a is valid? No, chunks are sorted. If a <
+                // chunk.first, it's not in this chunk AND not in subsequent
+                // chunks. It means it's in a hole before this chunk.
+                return MaxAddr;
+            }
+        }
+
+        if (!found) {
             return MaxAddr;
         }
 
-        Addr logicalAddr = result.second;
-        if (_policy) {
-            return _policy->getOffset(0, logicalSize(), logicalAddr);
-        }
-        return logicalAddr;
+        return offset;
     }
 
     /**

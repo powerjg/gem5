@@ -303,16 +303,8 @@ PhysicalMemory::createBackingStore(
 
     // point the memories to their backing store
     for (const auto& m : _memories) {
-        DPRINTF(AddrRanges, "Mapping memory %s to backing store\n",
-                m->name());
-        if (for_sparse) {
-            // If it's sparse, tell the memory what range this backing store
-            // is for.
-            m->setBackingStore(pmem, range);
-        } else {
-            // If it's not sparse, the memory will ignore the range.
-            m->setBackingStore(pmem, AddrRange());
-        }
+        DPRINTF(AddrRanges, "Mapping memory %s to backing store\n", m->name());
+        m->setBackingStore(pmem, range);
     }
 }
 
