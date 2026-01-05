@@ -242,3 +242,36 @@ TEST(AddrRangeMapTest, NestedSparse)
     it = r.contains(0x1500);
     EXPECT_EQ(it, r.end());
 }
+
+TEST(AddrRangeMapTest, SparseOverlapHierarchy)
+{
+    AddrRangeMap<int> map;
+
+    // Chunk 1: 0 - 3GB (0 - 3221225472)
+    // Chunk 2: 4GB - 34GB (4294967296 - 35433480192)
+    std::vector<std::pair<Addr, Addr>> chunks = {{0, 0xc0000000},
+                                                 {0x100000000, 0x840000000}};
+    AddrRange merged(chunks); // Sparse
+
+    // Range inside the hole: 3GB - ~4GB
+    AddrRange io(0xc0000000, 0xffff0000);
+
+    map.insert(merged, 1);
+    map.insert(io, 2);
+
+    // Lookup in Chunk 1
+    auto it = map.contains(0x100);
+    ASSERT_NE(it, map.end());
+    EXPECT_EQ(it->second, 1);
+
+    // Lookup in IO
+    it = map.contains(0xc0000000 + 0x100);
+    ASSERT_NE(it, map.end());
+    EXPECT_EQ(it->second, 2);
+
+    // Lookup in Chunk 2 (This is the regression case)
+    // 0x1001c5880 is inside [0x100000000, 0x840000000]
+    it = map.contains(0x1001c5880);
+    ASSERT_NE(it, map.end()) << "Failed to find address";
+    EXPECT_EQ(it->second, 1);
+}
