@@ -92,6 +92,10 @@ class AddrRange
     Addr _start;
     Addr _end;
 
+    /// Valid sub-ranges (hunks) for sparse ranges.
+    /// If empty, the range is considered contiguous [_start, _end).
+    std::vector<std::pair<Addr, Addr>> _chunks;
+
     std::shared_ptr<AddrMapPolicy> _policy;
 
   protected:
@@ -110,6 +114,7 @@ class AddrRange
             // get the values from the first one and check the others
             _start = begin_it->_start;
             _end = begin_it->_end;
+            _chunks = begin_it->_chunks;
             _policy = begin_it->_policy;
         }
 
@@ -125,6 +130,8 @@ class AddrRange
             for (auto it = begin_it; it != end_it; it++) {
                 fatal_if(it->_start != _start || it->_end != _end,
                          "Can only merge ranges with the same start and end");
+                fatal_if(it->_chunks != _chunks,
+                         "Can only merge ranges with the same sparse chunks");
                 fatal_if(!it->_policy, "Cannot merge flat ranges");
                 policies.push_back(it->_policy);
             }
@@ -227,14 +234,17 @@ class AddrRange
      * @ingroup api_addr_range
      */
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges)
-        : _policy(std::make_shared<SparsePolicy>(ranges))
+        : _policy(nullptr)
     {
-        if (ranges.empty()) {
+        _chunks = ranges;
+        std::sort(_chunks.begin(), _chunks.end());
+
+        if (_chunks.empty()) {
             _start = 1;
             _end = 0;
         } else {
-            _start = ranges.front().first;
-            _end = ranges.back().second;
+            _start = _chunks.front().first;
+            _end = _chunks.back().second;
         }
     }
 
@@ -254,18 +264,14 @@ class AddrRange
      */
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
               const std::vector<Addr> &masks, uint8_t intlv_match)
-        : _policy(masks.empty()
-                      ? std::make_shared<SparsePolicy>(ranges)
-                      : std::make_shared<SparsePolicy>(
-                            ranges, std::make_shared<MaskedInterleavingPolicy>(
-                                        masks, intlv_match)))
+        : AddrRange(ranges) // Delegate setup of chunks/start/end
     {
-        if (ranges.empty()) {
-            _start = 1;
-            _end = 0;
-        } else {
-            _start = ranges.front().first;
-            _end = ranges.back().second;
+        if (!masks.empty()) {
+            fatal_if(intlv_match >= 1ULL << masks.size(),
+                     "Match value %d does not fit in %d interleaving bits\n",
+                     intlv_match, masks.size());
+            _policy =
+                std::make_shared<MaskedInterleavingPolicy>(masks, intlv_match);
         }
     }
 
@@ -287,19 +293,11 @@ class AddrRange
     AddrRange(const std::vector<std::pair<Addr, Addr>> &ranges,
               uint32_t stripes, uint32_t intlv_match,
               uint32_t intlv_low_bit = 0)
-        : _policy(stripes > 1
-                      ? std::make_shared<SparsePolicy>(
-                            ranges, std::make_shared<ModuloInterleavingPolicy>(
-                                        stripes, intlv_match, intlv_low_bit))
-                      : std::make_shared<SparsePolicy>(ranges))
+        : AddrRange(ranges) // Delegate setup of chunks/start/end
     {
-        if (ranges.empty()) {
-            _start = 1;
-            _end = 0;
-        } else {
-            // The policy sorts the ranges, so get the start/end from there.
-            _start = subRanges().front().first;
-            _end = subRanges().back().second;
+        if (stripes > 1) {
+            _policy = std::make_shared<ModuloInterleavingPolicy>(
+                stripes, intlv_match, intlv_low_bit);
         }
     }
 
@@ -422,17 +420,24 @@ class AddrRange
     bool
     isSparse() const
     {
-        if (_policy) {
-            return dynamic_cast<SparsePolicy *>(_policy.get()) != nullptr;
-        }
-        return false;
+        return !_chunks.empty();
     }
 
+    /**
+     * Get the sub-ranges of this address range.
+     *
+     * If the address range is not sparse, it will return a vector
+     * containing a single element which is the address range itself.
+     *
+     * @return Vector of valid address chunks (start, end).
+     *
+     * @ingroup api_addr_range
+     */
     std::vector<std::pair<Addr, Addr>>
     subRanges() const
     {
-        if (_policy) {
-            return dynamic_cast<SparsePolicy *>(_policy.get())->getSubRanges();
+        if (isSparse()) {
+            return _chunks;
         }
         return std::vector<std::pair<Addr, Addr>>{{_start, _end}};
     }
@@ -481,10 +486,21 @@ class AddrRange
     Addr
     size() const
     {
-        if (_policy) {
-            return _policy->size(_start, _end);
+        Addr total = 0;
+        if (isSparse()) {
+            for (const auto &chunk : _chunks) {
+                total += (chunk.second - chunk.first);
+            }
+        } else {
+            total = _end - _start;
         }
-        return (_end - _start);
+
+        if (_policy) {
+            // Policy assumes a contiguous logic space of 'total' size
+            // returning 'size' usually just divides by stripes
+            return _policy->size(0, total);
+        }
+        return total;
     }
 
     /**
@@ -504,24 +520,40 @@ class AddrRange
     /**
      * Get the end address of the range.
      *
+     * If the address range is sparse, it will return the end address
+     * of the last sub-range. If the address range is interleaved, it will
+     * return the end address of the last interleaved chunk.
+     *
      * @ingroup api_addr_range
      */
     Addr end() const { return _end; }
 
     /**
-     * Get a string representation of the range. This could
-     * alternatively be implemented as a operator<<, but at the moment
-     * that seems like overkill.
+     * Get a string representation of the range.
      *
      * @ingroup api_addr_range
      */
     std::string
     to_string() const
     {
-        if (_policy) {
+        if (_policy && !isSparse()) {
             return _policy->to_string(_start, _end);
         }
-        return csprintf("[%#llx:%#llx]", _start, _end);
+
+        std::string s;
+        if (isSparse()) {
+            s = csprintf("Sparse[%#llx:%#llx]", _start, _end);
+            for (const auto &r : _chunks) {
+                s += csprintf(":[%#llx:%#llx]", r.first, r.second);
+            }
+        } else {
+            s = csprintf("[%#llx:%#llx]", _start, _end);
+        }
+
+        if (_policy) {
+            s += _policy->to_string(0, size());
+        }
+        return s;
     }
 
     /**
@@ -544,6 +576,13 @@ class AddrRange
             same_policy = _policy->canMerge(r._policy);
         }
 
+        if (isSparse() != r.isSparse()) {
+            return false;
+        }
+        if (isSparse() && _chunks != r._chunks) {
+            return false;
+        }
+
         return r._start == _start && r._end == _end && same_policy;
     }
 
@@ -564,17 +603,99 @@ class AddrRange
             return false;
         }
 
-        if (_policy && !_policy->checkIntersection(_start, _end, r._start,
-                                                   r._end, r._policy)) {
-            return false;
+        // Basic overlap exists.
+        // Check exact chunk overlap if sparse.
+        // And check policy intersection on the overlapping logical segments.
+
+        // Optimization for non-sparse simple case
+        if (!isSparse() && !r.isSparse() && !_policy && !r._policy) {
+            return true;
         }
 
-        if (r._policy && !r._policy->checkIntersection(
-                             r._start, r._end, _start, _end, _policy)) {
-            return false;
+        // If both are not sparse, and one has a policy, we can check
+        // intersection directly.
+        if (!isSparse() && !r.isSparse()) {
+            if (_policy && !r._policy) {
+                return _policy->checkIntersection(_start, _end, r._start,
+                                                  r._end, nullptr);
+            } else if (!r._policy && _policy) {
+                return r._policy->checkIntersection(_start, _end, r._start,
+                                                    r._end, nullptr);
+            } else if (_policy && r._policy) {
+                return _policy->checkIntersection(_start, _end, r._start,
+                                                  r._end, r._policy);
+            }
         }
 
-        return true;
+        // If at least one is sparse, we need to convert to the "logical"
+        // address space of both ranges and check for policy intersection.
+        // We iterate through overlaps in System Address space.
+        // For each overlap, we map to Logical Address space of 'this' and 'r'
+        // Then check if policies intersect on those logical ranges.
+
+        auto my_chunks = subRanges();
+        auto other_chunks = r.subRanges();
+
+        Addr myLogicalBase = 0; // Current logical base of 'this' iteration
+
+        // To map efficiently, we iterate my_chunks.
+        // We probably need a more efficient way if many chunks, but O(N*M) is
+        // fine for small N,M.
+        for (const auto &chunk : my_chunks) {
+            // Check against all other chunks
+            Addr otherLogicalBase = 0;
+            for (const auto &ochunk : other_chunks) {
+                Addr overlapStart = std::max(chunk.first, ochunk.first);
+                // Constrain by intersection of bounding boxes (optimization)
+                // actually we already checked BBox, but chunks might be
+                // precise.
+
+                Addr overlapEnd = std::min(chunk.second, ochunk.second);
+
+                if (overlapStart < overlapEnd) {
+                    // Valid system address overlap found.
+                    // Map to logical addresses.
+                    // offset in 'chunk' = overlapStart - chunk.first
+                    Addr myLogStart =
+                        myLogicalBase + (overlapStart - chunk.first);
+                    Addr myLogEnd = myLogStart + (overlapEnd - overlapStart);
+
+                    Addr otherLogStart =
+                        otherLogicalBase + (overlapStart - ochunk.first);
+                    Addr otherLogEnd =
+                        otherLogStart + (overlapEnd - overlapStart);
+
+                    // Check policy intersection
+                    if (!_policy && !r._policy) {
+                        return true;
+                    }
+
+                    if (_policy && r._policy) {
+                        if (_policy->checkIntersection(
+                                myLogStart, myLogEnd, otherLogStart,
+                                otherLogEnd, r._policy)) {
+                            return true;
+                        }
+                    } else if (_policy) {
+                        if (_policy->checkIntersection(myLogStart, myLogEnd,
+                                                       otherLogStart,
+                                                       otherLogEnd, nullptr)) {
+                            return true;
+                        }
+                    } else {
+                        if (r._policy->checkIntersection(
+                                otherLogStart, otherLogEnd, myLogStart,
+                                myLogEnd, nullptr)) {
+                            return true;
+                        }
+                    }
+                }
+                otherLogicalBase += (ochunk.second - ochunk.first);
+            }
+            myLogicalBase += (chunk.second - chunk.first);
+        }
+
+        return false;
     }
 
     /**
@@ -590,25 +711,20 @@ class AddrRange
     bool
     isSubset(const AddrRange& r) const
     {
-        if (interleaved())
-            panic("Cannot test subset of interleaved range %s\n", to_string());
+        panic_if(interleaved() || isSparse(),
+                 "Cannot test subset of interleaved/sparse range %s\n",
+                 to_string());
 
-        // This address range is not interleaved and therefore it
-        // suffices to check the upper bound, the lower bound and
-        // whether it would fit in a continuous segment of the input
-        // addr range.
-        if (r.interleaved()) {
-          if (r.contains(_start) && size() <= r.granularity()) {
-            // simplify checking for 1 element ranges
-            // no need to re-check r.contains(_end -1) if
-            // it is the same as _start
-            if (_start == _end - 1) {
-              return true;
+        if (r.interleaved() || r.isSparse()) {
+            // Hard to test generic subset against sparse/interleaved
+            // Simplest check:
+            if (r.contains(_start) && size() <= r.granularity()) {
+                if (_start == _end - 1) {
+                    return true;
+                }
+                return r.contains(_end - 1);
             }
-            //otherwise check if it also contains the end.
-            return r.contains(_end -1);
-          }
-          return false;
+            return false;
         } else {
 
             if (_end <= _start){
@@ -628,10 +744,73 @@ class AddrRange
                 // Normal case: Check if our range is completely within 'r'.
                 return _start >= r._start && _end <= r._end;
             }
-
         }
     }
 
+  private:
+    /**
+     * Helper to convert system address 'a' to a logical offset
+     * if this range is sparse.
+     * Returns MaxAddr if 'a' is not in chunks.
+     * If not sparse, returns a - _start.
+     */
+    std::pair<bool, Addr>
+    toLogical(Addr a) const
+    {
+        if (!isSparse()) {
+            if (a >= _start && a < _end) {
+                return {true, a - _start};
+            }
+            return {false, 0};
+        }
+
+        Addr logical = 0;
+        for (const auto &chunk : _chunks) {
+            if (a >= chunk.first && a < chunk.second) {
+                return {true, logical + (a - chunk.first)};
+            }
+            logical += (chunk.second - chunk.first);
+        }
+        return {false, 0};
+    }
+
+    Addr
+    logicalSize() const
+    {
+        if (!isSparse()) {
+            return _end - _start;
+        }
+        Addr total = 0;
+        for (const auto &chunk : _chunks) {
+            total += (chunk.second - chunk.first);
+        }
+        return total;
+    }
+
+    /**
+     * Helper to convert logical offset to system address 'a'
+     * if this range is sparse.
+     * Returns MaxAddr if 'logical' is out of bounds.
+     * If not sparse, returns _start + logical.
+     */
+    std::pair<bool, Addr>
+    toSystem(Addr logical) const
+    {
+        if (!isSparse()) {
+            return {true, _start + logical};
+        }
+
+        for (const auto &chunk : _chunks) {
+            Addr chunkSize = chunk.second - chunk.first;
+            if (logical < chunkSize) {
+                return {true, chunk.first + logical};
+            }
+            logical -= chunkSize;
+        }
+        return {false, MaxAddr};
+    }
+
+  public:
     /**
      * Determine if the range contains an address.
      *
@@ -643,17 +822,30 @@ class AddrRange
     bool
     contains(const Addr& a) const
     {
-        // check if the address is in the range and if there is either
-        // no interleaving, or with interleaving also if the selected
-        // bits from the address match the interleaving value
-        bool in_range = a >= _start && a < _end;
-        if (in_range) {
+        // Legacy behavior for non-sparse ranges
+        if (!isSparse()) {
+            if (a < _start || a >= _end) {
+                return false;
+            }
+            // If policy exists, it expects System Address 'a'
             if (_policy) {
                 return _policy->contains(_start, _end, a);
             }
             return true;
         }
-        return false;
+
+        // First check validity in chunks/range
+        auto result = toLogical(a);
+        if (!result.first) {
+            return false;
+        }
+
+        Addr logicalAddr = result.second;
+        if (_policy) {
+            // Policy checks logical address space
+            return _policy->contains(0, logicalSize(), logicalAddr);
+        }
+        return true;
     }
 
     /**
@@ -710,15 +902,26 @@ class AddrRange
     Addr
     getOffset(const Addr& a) const
     {
-        bool in_range = a >= _start && a < _end;
-        if (!in_range) {
-            return MaxAddr;
-        }
-        if (_policy) {
-            return _policy->getOffset(_start, _end, a);
-        } else {
+        if (!isSparse()) {
+            if (a < _start || a >= _end) {
+                return MaxAddr;
+            }
+            if (_policy) {
+                return _policy->getOffset(_start, _end, a);
+            }
             return a - _start;
         }
+
+        auto result = toLogical(a);
+        if (!result.first) {
+            return MaxAddr;
+        }
+
+        Addr logicalAddr = result.second;
+        if (_policy) {
+            return _policy->getOffset(0, logicalSize(), logicalAddr);
+        }
+        return logicalAddr;
     }
 
     /**
@@ -797,15 +1000,26 @@ class AddrRange
     {
         if (_start != r._start) {
             return _start < r._start;
-        } else {
-            // For now assume that the end is also the same.
-            // If both regions are interleaved, ask policy to compare.
-            if (interleaved() && r.interleaved()) {
-                return _policy->lessThan(r._policy);
-            } else {
-                return interleaved();
-            }
         }
+
+        // Check chunks (sparsity)
+        if (_chunks != r._chunks) {
+            return _chunks < r._chunks;
+        }
+
+        // For now assume that the end is also the same.
+        // If both regions are interleaved, assume same interleaving,
+        // and use the policy's lessThan operator.
+        // Otherwise, return true if this address range is interleaved.
+        if (_policy && r._policy) {
+            return _policy->lessThan(r._policy);
+        } else if (_policy) {
+            return true;
+        } else if (r._policy) {
+            return false;
+        }
+
+        return false; // Equal
     }
 
     /**
@@ -816,6 +1030,10 @@ class AddrRange
     {
         if (_start != r._start)    return false;
         if (_end != r._end)      return false;
+        if (_chunks != r._chunks) {
+            return false;
+        }
+
         if (!_policy && !r._policy) {
             return true;
         }
