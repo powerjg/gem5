@@ -29,6 +29,7 @@
 #ifndef __BASE_ADDR_RANGE_MAP_POLICY_HH__
 #define __BASE_ADDR_RANGE_MAP_POLICY_HH__
 
+#include <algorithm>
 #include <memory>
 #include <typeinfo>
 #include <vector>
