@@ -118,7 +118,8 @@ class AbstractMemory : public ClockedObject
     // Pointer to host memory used to implement this memory
     uint8_t* pmemAddr;
 
-    // Map of address ranges to host memory pointers
+    // Map of address ranges to host memory pointers. Used when this memory has
+    // a sparse address range.
     // Note: Either pmemAddr or pmemMap should be used, but not both.
     AddrRangeMap<uint8_t *> pmemMap;
 

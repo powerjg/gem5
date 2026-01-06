@@ -72,7 +72,12 @@ class ChanneledMemory(AbstractMemorySystem):
     """A class to implement multi-channel memory system
 
     This class can take a DRAM Interface as a parameter to model a multi
-    channel DDR DRAM memory system.
+    channel DDR DRAM memory system. It is assumed that the memory is
+    interleaved using the least significant bits above the interleaving size.
+    Supports both dense and sparse (e.g., with holes) address ranges.
+
+    If you want to use other bits for interleaving or use modulo interleaving,
+    you can override the ``_interleave_addresses`` method of this class.
     """
 
     def __init__(
@@ -162,7 +167,7 @@ class ChanneledMemory(AbstractMemorySystem):
         intlv_bits = int(log(self._num_channels, 2))
         masks = []
         for i in range(intlv_bits):
-            masks.append(1 << (intlv_low_bit + i))  # should this be i+1?
+            masks.append(1 << (intlv_low_bit + i))
         for i, ctrl in enumerate(self.mem_ctrl):
             if len(self._mem_ranges) == 1:
                 ctrl.dram.range = AddrRange(
@@ -206,11 +211,12 @@ class ChanneledMemory(AbstractMemorySystem):
 
     @overrides(AbstractMemorySystem)
     def set_memory_range(self, ranges: List[AddrRange]) -> None:
-        """Need to add support for non-contiguous non overlapping ranges in
-        the future.
+        """Set the range for the memory to respond to. This range must be
+        the same size as the memory's parameter. If multiple ranges are
+        specified, they must be non-overlapping and non-contiguous and a
+        sparse interleaving will be used. The sum of the size of all ranges
+        must equal the memory size.
         """
-        if len(ranges) > 1:
-            print("Using sparse ranges")
         if sum([r.size() for r in ranges]) != self._size:
             raise ValueError(
                 "Memory ranges do not match the memory size.\nMemory size: "

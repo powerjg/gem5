@@ -48,7 +48,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/addr_range_map_policy.hh"
+#include "base/addr_range_policy.hh"
 #include "base/bitfield.hh"
 #include "base/cprintf.hh"
 #include "base/logging.hh"
@@ -590,7 +590,7 @@ class AddrRange
         }
 
         if (_policy) {
-            s += _policy->to_string(0, size());
+            s += _policy->to_string();
         }
         return s;
     }

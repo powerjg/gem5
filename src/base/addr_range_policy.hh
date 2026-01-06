@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2023 The Regents of The University of California
+ * Copyright (c) 2026 Google Inc
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -130,7 +130,13 @@ class AddrMapPolicy
         return nullptr;
     }
 
-    virtual std::string to_string(Addr start, Addr end) const = 0;
+    /**
+     * Get a string representation of the policy.
+     *
+     * This is just the policy information (e.g., interleaving bits). The base,
+     * and bounds is printed by the AddrRange class.
+     */
+    virtual std::string to_string() const = 0;
 };
 
 class MaskedInterleavingPolicy : public AddrMapPolicy
@@ -213,7 +219,25 @@ class MaskedInterleavingPolicy : public AddrMapPolicy
         return masks == casted->masks;
     }
 
-    // Helper functions from original AddrRange
+    /*
+     * Helper functions from original AddrRange
+     *
+     * This function returns a new address in a continous range [
+     * start, start + size / intlv_bits). We can achieve this by
+     * discarding the LSB in each mask.
+     *
+     * e.g., if the input address is of the form:
+     * ------------------------------------
+     * | a_high | x1 | a_mid | x0 | a_low |
+     * ------------------------------------
+     * where x0 is the LSB set in masks[0]
+     * and x1 is the LSB set in masks[1]
+     *
+     * this function will return:
+     * ---------------------------------
+     * |    0 | a_high | a_mid | a_low |
+     * ---------------------------------
+     **/
     inline Addr
     removeIntlvBits(Addr a) const
     {
@@ -273,7 +297,7 @@ class MaskedInterleavingPolicy : public AddrMapPolicy
     }
 
     std::string
-    to_string(Addr start, Addr end) const override
+    to_string() const override
     {
         std::string str;
         for (unsigned int i = 0; i < masks.size(); i++) {
@@ -520,7 +544,7 @@ class ModuloInterleavingPolicy : public AddrMapPolicy
     }
 
     std::string
-    to_string(Addr start, Addr end) const override
+    to_string() const override
     {
         return csprintf("mod %d @ %d", nStripes, intlvMatch);
     }
