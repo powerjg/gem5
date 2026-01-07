@@ -63,6 +63,7 @@ AbstractMemory::AbstractMemory(const Params &p)
       range(p.range),
       pmemAddr(nullptr),
       isSparse(p.range.isSparse()),
+      accessBackingMemory(false),
       backdoor(params().range, nullptr,
                (MemBackdoor::Flags)(p.writeable ? MemBackdoor::Readable |
                                                       MemBackdoor::Writeable
