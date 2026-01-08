@@ -129,7 +129,9 @@ AbstractMemory::setBackingStore(uint8_t *pmem_addr, const AddrRange &_range)
         pmemMap.insert(_range, pmem_addr);
         assert(pmemAddr == nullptr);
     } else {
-        assert(_range == range);
+        panic_if(_range.start() != range.start() ||
+                     _range.end() != range.end(),
+                 "Backing store range does not match abstract memory range");
         pmemAddr = pmem_addr;
     }
 
