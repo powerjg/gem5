@@ -130,6 +130,8 @@ class ChanneledMemory(AbstractMemorySystem):
         else:
             self._size = self._get_dram_size(num_channels, self._dram_class)
 
+        self._memory_ranges = []
+
         self._create_mem_interfaces_controller()
 
     def _create_mem_interfaces_controller(self):
