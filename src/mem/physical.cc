@@ -322,7 +322,7 @@ PhysicalMemory::isMemAddr(Addr addr) const
     // have few ranges, we have simple linear scan of the non-interleaved
     // address ranges.
     for (const auto &range : validAddrMap) {
-        if (addr >= range.first && addr <= range.second) {
+        if (addr >= range.first && addr < range.second) {
             return true;
         }
         if (addr < range.first) {
