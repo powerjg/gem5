@@ -658,6 +658,124 @@ class AddrRange(ParamValue):
         return self.getValue().isSubset(addr_range.getValue())
 
 
+class ModuloAddrRange(AddrRange):
+    def __init__(
+        self,
+        start=0,
+        end=0,
+        size=0,
+        stripes=1,
+        stripeMatch=0,
+        intlvLowBit=0,
+        **kwargs,
+    ):
+        """
+        Args:
+            start: Start address
+            end: End address
+            size: Size of the range (Provide either start + size or start + end)
+            stripes: Number of stripes (what to modulo by)
+            stripeMatch: Which of the N stripes this range should match
+            intlvLowBit: The granularity of the stripe
+        """
+        self.stripes = stripes
+        self.stripeMatch = stripeMatch
+        self.intlvLowBit = intlvLowBit
+
+        if stripeMatch >= stripes:
+            raise ValueError("stripeMatch must be less than stripes")
+
+        if intlvLowBit >= 64:
+            raise ValueError("intlvLowBit must be less than 64")
+
+        if intlvLowBit == 0:
+            warn("Address range interleaving granularity is per byte")
+
+        if size != 0:
+            if end != 0:
+                raise ValueError("Cannot provide both size and end")
+            end = start + size
+
+        super().__init__(start=start, end=end, **kwargs)
+
+    def __str__(self):
+        return "{}:{}:{}:{}s:{}b".format(
+            self.start,
+            self.end,
+            self.stripeMatch,
+            self.stripes,
+            self.intlvLowBit,
+        )
+
+    def size(self):
+        return (int(self.end) - int(self.start)) // self.stripes
+
+    def getValue(self):
+        from _m5.range import AddrRange
+
+        return AddrRange(
+            int(self.start),
+            int(self.end),
+            int(self.stripes),
+            int(self.stripeMatch),
+            int(self.intlvLowBit),
+        )
+
+
+class SparseModuloAddrRange(ModuloAddrRange):
+    def __init__(self, ranges, **kwargs):
+        if not ranges:
+            raise ValueError("Ranges cannot be empty")
+        self.ranges = ranges
+        start = min(r.start for r in ranges)
+        end = max(r.end for r in ranges)
+        super().__init__(start=start, end=end, **kwargs)
+
+    def __str__(self):
+        rngs = "+".join(str(r) for r in self.ranges)
+        return "{}:{}:{}s:{}b".format(
+            rngs,
+            self.stripeMatch,
+            self.stripes,
+            self.intlvLowBit,
+        )
+
+    def getValue(self):
+        from _m5.range import AddrRange
+
+        cxx_ranges = [r.getValue() for r in self.ranges]
+        return AddrRange(
+            cxx_ranges,
+            int(self.stripes),
+            int(self.stripeMatch),
+            int(self.intlvLowBit),
+        )
+
+
+class SparseMaskedAddrRange(AddrRange):
+    def __init__(self, ranges, **kwargs):
+        if not ranges:
+            raise ValueError("Ranges cannot be empty")
+        self.ranges = ranges
+        start = min(r.start for r in ranges)
+        end = max(r.end for r in ranges)
+        super().__init__(start=start, end=end, **kwargs)
+
+    def __str__(self):
+        rngs = "+".join(str(r) for r in self.ranges)
+        return "{}:{}:{}".format(
+            rngs,
+            self.intlvMatch,
+            ":".join(str(m) for m in self.masks),
+        )
+
+    def getValue(self):
+        from _m5.range import AddrRange
+
+        cxx_ranges = [r.getValue() for r in self.ranges]
+        return AddrRange(cxx_ranges, self.masks, int(self.intlvMatch))
+
+
 # Boolean parameter type.  Python doesn't let you subclass bool, since
 # it doesn't want to let you create multiple instances of True and
 # False.  Thus this is a little more complicated than String.
