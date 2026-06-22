@@ -400,7 +400,15 @@ MemDepUnit::replay()
     while (!instsToReplay.empty()) {
         temp_inst = instsToReplay.front();
 
-        MemDepEntryPtr inst_entry = findInHash(temp_inst);
+        // If the instruction is no longer in the hash map, it has
+        // already been completed or squashed. Pop and skip safely.
+        MemDepHashIt hash_it = memDepHash.find(temp_inst->seqNum);
+        if (hash_it == memDepHash.end()) {
+            instsToReplay.pop_front();
+            continue;
+        }
+
+        MemDepEntryPtr inst_entry = (*hash_it).second;
 
         DPRINTF(MemDepUnit, "Replaying mem instruction PC %s [sn:%lli].\n",
                 temp_inst->pcState(), temp_inst->seqNum);
