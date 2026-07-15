@@ -78,7 +78,9 @@ ElfObjectFormat::load(ImageFileDataPtr ifd)
     // Check that we actually have a elf file
     Elf *elf =
         elf_memory((char *)const_cast<uint8_t *>(ifd->data()), ifd->len());
-    assert(elf);
+    if (!elf) {
+        return nullptr;
+    }
 
     GElf_Ehdr ehdr;
     if (gelf_getehdr(elf, &ehdr) == 0)
@@ -112,7 +114,10 @@ ElfObject::ElfObject(ImageFileDataPtr ifd) : ObjectFile(ifd)
     // get a pointer to elf structure
     elf = elf_memory((char *)const_cast<uint8_t *>(imageData->data()),
                      imageData->len());
-    assert(elf);
+    if (!elf) {
+        fatal("ElfObject: elf_memory failed for %s. elf is nullptr!\n",
+              imageData->filename());
+    }
     gelf_getehdr(elf, &ehdr);
 
     determineArch();
@@ -136,8 +141,18 @@ ElfObject::ElfObject(ImageFileDataPtr ifd) : ObjectFile(ifd)
             // Make sure the interpreter is an valid ELF file.
             auto interp_path = getInterpPath(phdr);
             ObjectFile *obj = createObjectFile(interp_path);
+            if (!obj) {
+                fatal(
+                    "ElfObject: Failed to load interpreter %s for %s. obj is "
+                    "nullptr!\n",
+                    interp_path, imageData->filename());
+            }
             interpreter = dynamic_cast<ElfObject *>(obj);
-            assert(interpreter != nullptr);
+            if (!interpreter) {
+                fatal("ElfObject: Interpreter %s for %s is not a valid ELF "
+                      "object!\n",
+                      interp_path, imageData->filename());
+            }
             _symtab.insert(obj->symtab());
         }
     }
@@ -168,7 +183,8 @@ ElfObject::ElfObject(ImageFileDataPtr ifd) : ObjectFile(ifd)
         if (shdr.sh_type == SHT_SYMTAB) {
             Elf_Data *data = elf_getdata(section, nullptr);
             int count = shdr.sh_size / shdr.sh_entsize;
-            DPRINTF(Loader, "Found Symbol Table, %d symbols present.", count);
+            DPRINTFR(Loader, "Found Symbol Table, %d symbols present.\n",
+                     count);
 
             // Loop through all the symbols.
             for (int i = 0; i < count; ++i) {
@@ -223,8 +239,8 @@ ElfObject::ElfObject(ImageFileDataPtr ifd) : ObjectFile(ifd)
                     sym.st_size);
 
                 if (_symtab.insert(symbol)) {
-                    DPRINTF(Loader, "Symbol: %-40s value %#x.\n",
-                            symbol.name(), symbol.address());
+                    DPRINTFR(Loader, "Symbol: %-40s value %#x.\n",
+                             symbol.name(), symbol.address());
                 }
             }
         }
