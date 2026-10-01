@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2013 ARM Limited
+ * Copyright (c) 2026 Google LLC
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -42,6 +43,7 @@
 
 #include "sim/sim_events.hh"
 
+#include <algorithm>
 #include <charconv>
 #include <string>
 #include <system_error>
@@ -116,6 +118,45 @@ syncClassicGeneratorFields(std::string &cause, int &code, ExitPayload &payload)
     code = classicGeneratorCode(payload);
 }
 
+/**
+ * Earliest tick at which an "exit now" global event may be scheduled.
+ *
+ * Global events are inserted asynchronously into every event queue and are
+ * only picked up at the next global synchronization point, so they must not
+ * be scheduled before it (see EventQueue::asyncInsert). Scheduling at
+ * curTick() in multi-queue mode lets a thread that drains its async queue
+ * late see the exit event before the sync event and block on the exit
+ * event's barrier while every other thread blocks on the sync barrier: a
+ * deadlock. With a single event queue nextSimQuantum() is 0 and the exit
+ * happens at curTick() as before.
+ */
+Tick
+exitNowTick()
+{
+    if (numMainEventQueues <= 1) {
+        return curTick();
+    }
+    return std::max(curTick(), curEventQueue()->nextSimQuantum());
+}
+
+/**
+ * Priority of an "exit now" global event. In multi-queue mode the event is
+ * scheduled at the next synchronization tick, where the GlobalSyncEvent
+ * runs with Minimum_Pri. Events with the same tick and priority are
+ * serviced LIFO, so an exit event with Minimum_Pri that reaches a queue
+ * after the sync event would run before it in threads that drain their
+ * async queue late, and only in those threads: a deadlock. Sim_Exit_Pri
+ * orders the exit strictly after the barrier in every thread.
+ */
+EventBase::Priority
+exitNowPriority()
+{
+    if (numMainEventQueues <= 1) {
+        return EventBase::Minimum_Pri;
+    }
+    return EventBase::Sim_Exit_Pri;
+}
+
 } // anonymous namespace
 
 GlobalSimLoopExitEvent::GlobalSimLoopExitEvent(
@@ -136,7 +177,7 @@ GlobalSimLoopExitEvent::GlobalSimLoopExitEvent(
 GlobalSimLoopExitEvent::GlobalSimLoopExitEvent(
     const std::string &_cause, int c, Tick r, uint64_t hypercall_id,
     std::map<std::string, std::string> payload)
-    : GlobalEvent(curTick(), Minimum_Pri, IsExitEvent),
+    : GlobalEvent(exitNowTick(), exitNowPriority(), IsExitEvent),
       cause(_cause),
       code(c),
       repeat(r),

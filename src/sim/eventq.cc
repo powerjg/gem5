@@ -439,7 +439,7 @@ Event::dump() const
 }
 
 EventQueue::EventQueue(const std::string &n)
-    : objName(n), head(NULL), _curTick(0)
+    : objName(n), head(NULL), _curTick(0), _nextSimQuantum(0)
 {
 }
 

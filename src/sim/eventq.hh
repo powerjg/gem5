@@ -745,6 +745,17 @@ class EventQueue
     void setNextSimQuantum(Tick when) { _nextSimQuantum = when; }
 
     /**
+     * Tick of the next global synchronization point. Asynchronously
+     * inserted (global) events must not be scheduled before it. Zero when
+     * running with a single event queue.
+     */
+    Tick
+    nextSimQuantum() const
+    {
+        return _nextSimQuantum;
+    }
+
+    /**
      * Schedule the given event on this queue. Safe to call from any thread.
      *
      * @ingroup api_eventq
