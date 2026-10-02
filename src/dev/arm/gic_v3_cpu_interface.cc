@@ -66,6 +66,10 @@ Gicv3CPUInterface::Gicv3CPUInterface(Gicv3 * gic, ThreadContext *_tc)
 {
     hppi.prio = 0xff;
     hppi.intid = Gicv3::INTID_SPURIOUS;
+    // Initialize hppi.group to a safe default to avoid undefined behavior
+    // (reading uninitialized memory) if update() is called before any
+    // interrupts are actually posted.
+    hppi.group = Gicv3::G0S;
 
     setISA(static_cast<ISA*>(tc->getIsaPtr()));
 }

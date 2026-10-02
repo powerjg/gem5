@@ -123,7 +123,7 @@ SMMUTranslationProcess::resumeTransaction()
 {
     assert(smmu.system.isTimingMode());
 
-    assert(!"Stalls are broken");
+    assert(false && "Stalls are broken");
 
     Tick resumeTick = curTick();
 
