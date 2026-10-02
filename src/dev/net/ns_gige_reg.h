@@ -34,6 +34,8 @@
 #ifndef __DEV_NS_GIGE_REG_H__
 #define __DEV_NS_GIGE_REG_H__
 
+#include <cstdint>
+
 namespace gem5
 {
 

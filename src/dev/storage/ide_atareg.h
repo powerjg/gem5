@@ -44,6 +44,8 @@
 
 #endif
 
+#include <cstdint>
+
 #ifdef LITTLE_ENDIAN
 #define ATA_BYTE_ORDER LITTLE_ENDIAN
 #elif defined(BIG_ENDIAN)

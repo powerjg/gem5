@@ -31,6 +31,8 @@
  */
 #include "base/bitfield.hh"
 #include "base/compiler.hh"
+#include "base/types.hh"
+#include "sim/serialize.hh"
 
 namespace gem5
 {

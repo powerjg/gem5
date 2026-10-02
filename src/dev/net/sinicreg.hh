@@ -32,6 +32,13 @@
 #include <cstdint>
 
 #include "base/compiler.hh"
+#include "base/types.hh"
+
+namespace gem5
+{
+
+namespace sinic
+{
 
 #define __SINIC_REG32(NAME, VAL) static const uint32_t NAME = (VAL);
 #define __SINIC_REG64(NAME, VAL) static const uint64_t NAME = (VAL);
@@ -55,12 +62,6 @@
         { return (reg & NAME) >> OFFSET; } \
         static inline uint64_t set_##NAME(uint64_t reg, uint64_t val) \
         { return (reg & ~NAME) | ((val << OFFSET) & NAME); }
-
-namespace gem5
-{
-
-namespace sinic
-{
 
 namespace registers
 {

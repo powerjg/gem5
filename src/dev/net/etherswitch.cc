@@ -33,7 +33,7 @@
 #include "dev/net/etherswitch.hh"
 
 #include "base/trace.hh"
-#include "debug/EthernetAll.hh"
+#include "debug/Ethernet.hh"
 #include "sim/core.hh"
 #include "sim/cur_tick.hh"
 
