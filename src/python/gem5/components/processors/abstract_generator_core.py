@@ -26,10 +26,19 @@
 
 
 from abc import abstractmethod
-from typing import Optional
+from typing import (
+    Optional,
+)
 
-from m5.objects import PortTerminator
-from m5.params import Port
+from m5.objects import (
+    BaseMMU,
+    PcCountTrackerManager,
+    PortTerminator,
+)
+from m5.params import (
+    PcCountPair,
+    Port,
+)
 
 from ...isas import ISA
 from ...utils.override import overrides
@@ -102,6 +111,40 @@ class AbstractGeneratorCore(AbstractCore):
         connect them to walker ports. Just pass here.
         """
         pass
+
+    @overrides(AbstractCore)
+    def requires_send_evicts(self) -> bool:
+        return False
+
+    @overrides(AbstractCore)
+    def set_switched_out(self, value: bool) -> None:
+        pass
+
+    @overrides(AbstractCore)
+    def get_mmu(self) -> BaseMMU:
+        raise NotImplementedError
+
+    @overrides(AbstractCore)
+    def _set_simpoint(
+        self, inst_starts: list[int], board_initialized: bool
+    ) -> None:
+        raise NotImplementedError
+
+    @overrides(AbstractCore)
+    def _set_inst_stop_any_thread(
+        self, inst: int, board_initialized: bool
+    ) -> None:
+        raise NotImplementedError
+
+    @overrides(AbstractCore)
+    def add_pc_tracker_probe(
+        self, target_pair: list[PcCountPair], manager: PcCountTrackerManager
+    ) -> None:
+        raise NotImplementedError
+
+    @overrides(AbstractCore)
+    def get_total_instructions(self) -> int:
+        return 0
 
     @abstractmethod
     def start_traffic(self):
