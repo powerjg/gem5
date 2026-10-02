@@ -45,10 +45,10 @@
 #include <queue>
 
 #include "base/statistics.hh"
+#include "cpu/base.hh"
 #include "cpu/kvm/perfevent.hh"
 #include "cpu/kvm/timer.hh"
 #include "cpu/kvm/vm.hh"
-#include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
 #include "sim/faults.hh"
 
@@ -399,7 +399,18 @@ class BaseKvmCPU : public BaseCPU
     void setOneReg(uint64_t id, const void *addr);
     void setOneReg(uint64_t id, uint64_t value) { setOneReg(id, &value); }
     void setOneReg(uint64_t id, uint32_t value) { setOneReg(id, &value); }
+    bool trySetOneReg(uint64_t id, const void *addr);
+    bool
+    trySetOneReg(uint64_t id, uint64_t value)
+    { return trySetOneReg(id, &value); }
+    bool
+    trySetOneReg(uint64_t id, uint32_t value)
+    { return trySetOneReg(id, &value); }
     void getOneReg(uint64_t id, void *addr) const;
+    bool tryGetOneReg(uint64_t id, void *addr) const;
+    bool
+    tryGetOneRegU64(uint64_t id, uint64_t *val) const
+    { return tryGetOneReg(id, val); }
     uint64_t getOneRegU64(uint64_t id) const {
         uint64_t value;
         getOneReg(id, &value);

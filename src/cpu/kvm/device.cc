@@ -102,6 +102,26 @@ KvmDevice::setAttrPtr(uint32_t group, uint64_t attr, const void *data) const
 }
 
 bool
+KvmDevice::trySetAttrPtr(uint32_t group, uint64_t attr, const void *data) const
+{
+#ifdef KVM_SET_DEVICE_ATTR
+    // clang-format off
+    struct kvm_device_attr dattr =
+    {
+        0, // Flags
+        group,
+        attr,
+        reinterpret_cast<uint64_t>(data),
+    };
+    // clang-format on
+
+    return ioctl(KVM_SET_DEVICE_ATTR, &dattr) == 0;
+#else
+    return false;
+#endif
+}
+
+bool
 KvmDevice::hasAttr(uint32_t group, uint64_t attr) const
 {
 #ifdef KVM_HAS_DEVICE_ATTR

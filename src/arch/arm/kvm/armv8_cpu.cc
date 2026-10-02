@@ -39,12 +39,17 @@
 
 #include <linux/kvm.h>
 
+#include <cerrno>
+#include <cstring>
+
+#include "arch/arm/pcstate.hh"
 #include "arch/arm/regs/int.hh"
 #include "arch/arm/regs/misc_info.hh"
 #include "arch/arm/regs/vec.hh"
 #include "arch/arm/utility.hh"
 #include "debug/KvmContext.hh"
 #include "params/ArmV8KvmCPU.hh"
+#include "sim/eventq.hh"
 
 namespace gem5
 {
@@ -237,13 +242,35 @@ ArmV8KvmCPU::updateKvmState()
     } else {
         cpsr.ge = 0;
     }
-    DPRINTF(KvmContext, "  %s := 0x%x\n", "PSTATE", cpsr);
-    setOneReg(INT_REG(regs.pstate), static_cast<uint64_t>(cpsr));
+    // In ARMv8 architecture, PSTATE mode bits [4:0] specify the exception
+    // level and execution state (e.g., 0x5 = EL1h, 0x4 = EL1t, 0x0 = illegal
+    // mode). During early CPU initialization or bare-metal boot, gem5's
+    // ThreadContext may have CPSR/PSTATE zeroed out (mode bits == 0x00).
+    // Passing mode 0x00 to KVM_SET_ONE_REG causes host KVM to reject the ioctl
+    // with EINVAL and abort. We sanitize uninitialized PSTATE mode bits by
+    // defaulting to EL1h mode with DAIF exception masks asserted (D=1, A=1,
+    // I=1, F=1 -> 0x3c0 | 0x5 = 0x3c5).
+    constexpr uint64_t PSTATE_MODE_MASK = 0x1f;
+    constexpr uint64_t PSTATE_MODE_EL1H_DAIF_MASKED = 0x3c5;
+
+    uint64_t pstate_val = static_cast<uint64_t>(cpsr);
+    if ((pstate_val & PSTATE_MODE_MASK) == 0) {
+        pstate_val |= PSTATE_MODE_EL1H_DAIF_MASKED;
+    }
+    if (!trySetOneReg(INT_REG(regs.pstate), pstate_val)) {
+        warn("KVM: Failed to set PSTATE register (0x%llx) to 0x%llx (errno: "
+             "%s)\n",
+             INT_REG(regs.pstate), pstate_val, strerror(errno));
+    }
 
     for (const auto &ri : miscRegMap) {
         const uint64_t value(tc->readMiscReg(ri.idx));
         DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
-        setOneReg(ri.kvm, value);
+        if (!trySetOneReg(ri.kvm, value)) {
+            warn("KVM: Failed to set misc register %s (0x%llx) to 0x%llx "
+                 "(errno: %s)\n",
+                 ri.name, ri.kvm, value, strerror(errno));
+        }
     }
 
     for (int i = 0; i < NUM_XREGS; ++i) {
@@ -285,7 +312,11 @@ ArmV8KvmCPU::updateKvmState()
         }
 
         DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
-        setOneReg(ri.kvm, value);
+        if (!trySetOneReg(ri.kvm, value)) {
+            warn("KVM: Failed to set system register %s (0x%llx) to 0x%llx "
+                 "(errno: %s)\n",
+                 ri.name, ri.kvm, value, strerror(errno));
+        }
     }
 
     setOneReg(INT_REG(regs.pc), tc->pcState().instAddr());
@@ -348,7 +379,13 @@ ArmV8KvmCPU::updateThreadContext()
     }
 
     for (const auto &ri : getSysRegMap()) {
-        const auto value(getOneRegU64(ri.kvm));
+        uint64_t value;
+        if (!tryGetOneRegU64(ri.kvm, &value)) {
+            warn("KVM: Failed to get system register %s (0x%llx) from host "
+                 "KVM (errno: %s)\n",
+                 ri.name, ri.kvm, strerror(errno));
+            continue;
+        }
         DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
         if (ri.is_device) {
             // This system register is backed by a device. This means

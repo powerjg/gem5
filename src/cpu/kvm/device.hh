@@ -96,8 +96,14 @@ class KvmDevice
         setAttrPtr(group, attr, &data);
     }
 
+    template <typename T>
+    bool
+    trySetAttr(uint32_t group, uint64_t attr, const T &data) const
+    { return trySetAttrPtr(group, attr, &data); }
+
     void getAttrPtr(uint32_t group, uint64_t attr, void *data) const;
     void setAttrPtr(uint32_t group, uint64_t attr, const void *data) const;
+    bool trySetAttrPtr(uint32_t group, uint64_t attr, const void *data) const;
 
     /**
      * Check if a device attribute is valid

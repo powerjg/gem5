@@ -39,11 +39,19 @@
 
 #include <linux/kvm.h>
 
+#include <optional>
+#include <type_traits>
+
 #include "arch/arm/kvm/base_cpu.hh"
 #include "arch/arm/regs/misc.hh"
+#include "base/logging.hh"
+#include "base/trace.hh"
+#include "base/types.hh"
 #include "debug/GIC.hh"
 #include "debug/Interrupt.hh"
+#include "mem/packet.hh"
 #include "params/MuxingKvmGicV2.hh"
+#include "sim/drain.hh"
 
 namespace gem5
 {
@@ -187,6 +195,10 @@ KvmKernelGicV2::writeCpu(ContextID ctx, Addr daddr, uint32_t data)
 #define SZ_64K 0x00000040
 #endif
 
+#ifndef KVM_VGIC_V3_ADDR_TYPE_REDIST_REGION
+#define KVM_VGIC_V3_ADDR_TYPE_REDIST_REGION 2
+#endif
+
 KvmKernelGicV3::KvmKernelGicV3(KvmVM &_vm,
                                const MuxingKvmGicV3Params &p)
     : KvmKernelGic(_vm, KVM_DEV_TYPE_ARM_VGIC_V3, p.it_lines),
@@ -195,8 +207,18 @@ KvmKernelGicV3::KvmKernelGicV3(KvmVM &_vm,
 {
     kdev.setAttr<uint64_t>(
         KVM_DEV_ARM_VGIC_GRP_ADDR, KVM_VGIC_V3_ADDR_TYPE_DIST, p.dist_addr);
-    kdev.setAttr<uint64_t>(
-        KVM_DEV_ARM_VGIC_GRP_ADDR, KVM_VGIC_V3_ADDR_TYPE_REDIST, p.redist_addr);
+    if (!kdev.trySetAttr<uint64_t>(KVM_DEV_ARM_VGIC_GRP_ADDR,
+                                   KVM_VGIC_V3_ADDR_TYPE_REDIST,
+                                   p.redist_addr)) {
+        // Fall back to KVM_VGIC_V3_ADDR_TYPE_REDIST_REGION
+        // Format: bits[63:52]=count (0 = contiguous),
+        // bits[51:16]=base_addr>>16, bits[15:0]=index (0)
+        uint64_t redist_region =
+            (0ULL << 52) | ((p.redist_addr >> 16) << 16) | (0ULL & 0xffff);
+        kdev.setAttr<uint64_t>(KVM_DEV_ARM_VGIC_GRP_ADDR,
+                               KVM_VGIC_V3_ADDR_TYPE_REDIST_REGION,
+                               redist_region);
+    }
 }
 
 void
@@ -233,7 +255,10 @@ KvmKernelGicV3::setGicReg(unsigned group, unsigned mpidr, unsigned offset,
         ((uint64_t)mpidr << KVM_DEV_ARM_VGIC_V3_MPIDR_SHIFT) |
         (offset << KVM_DEV_ARM_VGIC_OFFSET_SHIFT));
 
-    kdev.setAttrPtr(group, attr, &reg);
+    if (!kdev.trySetAttrPtr(group, attr, &reg)) {
+        warn("KvmKernelGicV3: Failed to set GIC reg (group: %u, attr: 0x%x)\n",
+             group, attr);
+    }
 }
 
 uint32_t
