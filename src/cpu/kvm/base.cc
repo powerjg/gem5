@@ -55,6 +55,7 @@
 #include "debug/KvmIO.hh"
 #include "debug/KvmRun.hh"
 #include "params/BaseKvmCPU.hh"
+#include "sim/core.hh"
 #include "sim/process.hh"
 #include "sim/system.hh"
 
@@ -777,10 +778,12 @@ BaseKvmCPU::kvmRun(Tick ticks)
         // force an exit from KVM by kicking the vCPU.
         EventQueue::ScopedRelease release(curEventQueue());
 
-        if (ticks < runTimer->resolution()) {
-            DPRINTF(KvmRun, "KVM: Adjusting tick count (%i -> %i)\n",
-                    ticks, runTimer->resolution());
-            ticks = runTimer->resolution();
+        Tick min_ticks = 100 * sim_clock::as_int::us; // 100 microseconds minimum quantum
+        Tick sync_ticks = std::max(runTimer->resolution(), min_ticks);
+        if (ticks < sync_ticks) {
+            DPRINTF(KvmRun, "KVM: Adjusting tick count (%i -> %i)\n", ticks,
+                    sync_ticks);
+            ticks = sync_ticks;
         }
 
         // Get hardware statistics after synchronizing contexts. The KVM
