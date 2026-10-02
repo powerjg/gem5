@@ -38,14 +38,19 @@
 #include "arch/arm/kvm/base_cpu.hh"
 
 #include <linux/kvm.h>
+
+#include <cstdint>
 #include <mutex>
 
 #include "arch/arm/interrupts.hh"
+#include "base/logging.hh"
+#include "base/trace.hh"
 #include "base/uncontended_mutex.hh"
 #include "debug/KvmInt.hh"
 #include "dev/arm/generic_timer.hh"
 #include "params/BaseArmKvmCPU.hh"
 #include "params/GenericTimer.hh"
+#include "sim/serialize.hh"
 
 namespace gem5
 {
@@ -237,6 +242,16 @@ BaseArmKvmCPU::getRegList(kvm_reg_list &regs) const
     } else {
         return true;
     }
+}
+
+void BaseArmKvmCPU::serialize(CheckpointOut& cp) const {
+  SERIALIZE_SCALAR(vtime);
+  BaseKvmCPU::serialize(cp);
+}
+
+void BaseArmKvmCPU::unserialize(CheckpointIn& cp) {
+  UNSERIALIZE_SCALAR(vtime);
+  BaseKvmCPU::unserialize(cp);
 }
 
 } // namespace gem5

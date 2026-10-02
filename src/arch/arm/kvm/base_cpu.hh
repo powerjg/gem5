@@ -38,11 +38,13 @@
 #ifndef __ARCH_ARM_KVM_BASE_CPU_HH__
 #define __ARCH_ARM_KVM_BASE_CPU_HH__
 
+#include <cstdint>
 #include <vector>
 
 #include "arch/arm/pcstate.hh"
 #include "cpu/kvm/base.hh"
 #include "dev/arm/base_gic.hh"
+#include "sim/serialize.hh"
 
 struct kvm_reg_list;
 struct kvm_vcpu_init;
@@ -59,6 +61,9 @@ class BaseArmKvmCPU : public BaseKvmCPU
     virtual ~BaseArmKvmCPU();
 
     void startup() override;
+
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
   protected:
     Tick kvmRun(Tick ticks) override;
