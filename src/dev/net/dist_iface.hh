@@ -76,6 +76,7 @@
 #define __DEV_DIST_IFACE_HH__
 
 #include <array>
+#include <condition_variable>
 #include <mutex>
 #include <queue>
 #include <thread>

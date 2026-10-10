@@ -11,6 +11,9 @@
  * unmodified and in its entirety in all distributions of the software,
  * modified or unmodified, in source code or in binary form.
  *
+ * Copyright (c) 2026 Google LLC
+ * All rights reserved.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met: redistributions of source code must retain the above copyright
@@ -41,7 +44,6 @@
 #include <mutex>
 
 #include "arch/arm/interrupts.hh"
-#include "base/uncontended_mutex.hh"
 #include "debug/KvmInt.hh"
 #include "dev/arm/generic_timer.hh"
 #include "params/BaseArmKvmCPU.hh"
@@ -75,7 +77,7 @@ namespace {
  */
 uint64_t vtime = 0;
 uint64_t vtime_counter = 0;
-UncontendedMutex vtime_mutex;
+std::mutex vtime_mutex;
 
 }  // namespace
 
@@ -173,7 +175,7 @@ BaseArmKvmCPU::ioctlRun()
     // Check if it's the first vcpu going into KVM. If yes, it should restore
     // the virtual time.
     {
-        std::lock_guard<UncontendedMutex> l(vtime_mutex);
+        std::lock_guard<std::mutex> l(vtime_mutex);
         if (vtime_counter++ == 0)
             setOneReg(KVM_REG_ARM_TIMER_CNT, vtime);
     }
@@ -181,7 +183,7 @@ BaseArmKvmCPU::ioctlRun()
     // Check if it's the last vcpu back from KVM. If yes, it should save the
     // virtual time.
     {
-        std::lock_guard<UncontendedMutex> l(vtime_mutex);
+        std::lock_guard<std::mutex> l(vtime_mutex);
         if (--vtime_counter == 0)
             getOneReg(KVM_REG_ARM_TIMER_CNT, &vtime);
     }

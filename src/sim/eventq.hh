@@ -46,12 +46,12 @@
 #include <string>
 
 #include "base/debug.hh"
+#include "base/fair_adaptive_mutex.hh"
 #include "base/flags.hh"
 #include "base/named.hh"
 #include "base/trace.hh"
 #include "base/type_traits.hh"
 #include "base/types.hh"
-#include "base/uncontended_mutex.hh"
 #include "debug/Event.hh"
 #include "sim/cur_tick.hh"
 #include "sim/serialize.hh"
@@ -616,7 +616,7 @@ class EventQueue
     Tick _nextSimQuantum;
 
     //! Mutex to protect async queue.
-    FairUncontendedMutex async_queue_mutex;
+    FairAdaptiveMutex async_queue_mutex;
 
     //! List of events added by other threads to this event queue.
     std::list<Event*> async_queue;
@@ -641,7 +641,7 @@ class EventQueue
      * @see EventQueue::lock()
      * @see EventQueue::unlock()
      */
-    FairUncontendedMutex service_mutex;
+    FairAdaptiveMutex service_mutex;
 
     //! Insert / remove event from the queue. Should only be called
     //! by thread operating this queue.
