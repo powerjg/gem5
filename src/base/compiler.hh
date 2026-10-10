@@ -12,6 +12,7 @@
  * modified or unmodified, in source code or in binary form.
  *
  * Copyright (c) 2006 The Regents of The University of Michigan
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -202,5 +203,26 @@
 // existing code.
 #define GEM5_NO_DISCARD [[nodiscard]]
 #define GEM5_VAR_USED [[maybe_unused]]
+
+namespace gem5
+{
+
+/**
+ * Hint to the processor that the caller is in a spin-wait loop.
+ */
+inline void
+cpuRelax()
+{
+#if defined(__x86_64__) || defined(__i386__)
+    __builtin_ia32_pause();
+#elif defined(__aarch64__)
+    asm volatile("yield" ::: "memory");
+#else
+    // No pause hint on this architecture: callers fall back to a plain
+    // busy loop until their spin budget expires.
+#endif
+}
+
+} // namespace gem5
 
 #endif // __BASE_COMPILER_HH__

@@ -39,6 +39,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/barrier.hh"
 #include "base/logging.hh"
 #include "sim/eventq.hh"
 #include "sim/global_event.hh"
@@ -344,7 +345,7 @@ class SimulatorThreads
     bool phaseExit;
     std::vector<std::thread> threads;
     std::barrier<> barrier;
-    std::barrier<FinishPhase> phaseBarrier;
+    Barrier<FinishPhase> phaseBarrier;
 };
 
 } // namespace gem5
