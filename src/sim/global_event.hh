@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2011-2013 Advanced Micro Devices, Inc.
  * Copyright (c) 2013 Mark D. Hill and David A. Wood
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,10 +31,10 @@
 #ifndef __SIM_GLOBAL_EVENT_HH__
 #define __SIM_GLOBAL_EVENT_HH__
 
-#include <barrier>
 #include <mutex>
 #include <vector>
 
+#include "base/logging.hh"
 #include "sim/eventq.hh"
 
 namespace gem5
@@ -43,30 +44,20 @@ namespace gem5
  * @file sim/global_event.hh
  * Global events and related declarations.
  *
- * A global event is an event that occurs across all threads, i.e.,
- * globally.  It consists of a set of "local" (regular) Events, one
- * per thread/event queue, a barrier object, and common state.  The
- * local events are scheduled for the same tick.  The local event
- * process() method enters the barrier to wait for other threads; once
- * all threads reach that tick (and enter the associated barrier), the
- * global event is triggered and its associated activity is performed.
+ * A global event is an event that occurs across all main event queues
+ * at the same tick. It consists of a set of local BarrierEvent
+ * instances, one per main event queue, and common state. When a queue
+ * reaches a local BarrierEvent, EventQueue::serviceOne() returns the
+ * BarrierEvent unprocessed to the simulation loop (SimulatorThreads).
+ * Once every main event queue has stopped at its local BarrierEvent for
+ * the global event, the simulation loop executes the global event's
+ * process() method once and releases the local events.
  *
  * There are two basic global event patterns, GlobalEvent and
- * GlobalSyncEvent.  GlobalEvent is the base class for typical global
- * events, while GlobalSyncEvent is optimized for global
- * synchronization operations.
+ * GlobalSyncEvent. GlobalEvent is the base class for typical global
+ * events, while GlobalSyncEvent is used for periodic quantum
+ * synchronization across multiple main event queues.
  */
-
-class BaseGlobalEvent;
-
-/*
- * Global barrier used to synchronize threads
- */
-struct ProcessBarrier
-{
-    BaseGlobalEvent *event;
-    void operator()() const noexcept;
-};
 
 /**
  * Common base class for GlobalEvent and GlobalSyncEvent.
@@ -82,11 +73,9 @@ class BaseGlobalEvent : public EventBase
       static std::mutex globalQMutex;
 
   protected:
-
-    /// The base class for the local events that will synchronize
-    /// threads to perform the global event.  This class is abstract,
-    /// since it derives from the abstract Event class but still does
-    /// not define the required process() method.
+    /// The base class for the local events scheduled on each main event
+    /// queue to pause that queue at the global event tick so the
+    /// simulation loop can dispatch the global event across all queues.
     class BarrierEvent : public Event
     {
       protected:
@@ -101,32 +90,68 @@ class BaseGlobalEvent : public EventBase
 
         friend class BaseGlobalEvent;
 
-        void
-        globalBarrier()
+      public:
+        using Event::release;
+
+        virtual BaseGlobalEvent *
+        globalEvent()
         {
-            // This method will be called from the process() method in
-            // the local barrier events
-            // (GlobalSyncEvent::BarrierEvent).  The local event
-            // queues are always locked when servicing events (calling
-            // the process() method), which means that it will be
-            // locked when entering this method. We need to unlock it
-            // while waiting on the barrier to prevent deadlocks if
-            // another thread wants to lock the event queue.
-            EventQueue::ScopedRelease release(curEventQueue());
-            _globalEvent->barrier.arrive_and_wait();
+            return _globalEvent;
         }
 
-      public:
-        virtual BaseGlobalEvent *globalEvent() { return _globalEvent; }
+        void
+        process() override
+        {
+            panic("BarrierEvent must be dispatched by the simulation loop");
+        }
     };
-
-    // The barrier that all threads wait on before performing a global event.
-    std::barrier<ProcessBarrier> barrier;
 
     //! The individual local event instances (one per thread/event queue).
     std::vector<BarrierEvent *> barrierEvent;
 
   public:
+    static void
+    releaseBarrierEvent(Event *event)
+    {
+        static_cast<BarrierEvent *>(event)->release();
+    }
+
+    /**
+     * Dispatch an event returned by EventQueue::serviceOne() in a
+     * single-queue simulation loop (such as SST or SystemC co-simulation)
+     * that does not use SimulatorThreads.
+     *
+     * If `event` is a BarrierEvent for a BaseGlobalEvent, executes the
+     * global event's process() method under mainEventQueue[0]'s lock.
+     * Non-exit barrier events are then released and nullptr is returned so
+     * the caller continues its loop; exit events are returned to the caller.
+     */
+    static Event *
+    dispatchSingleQueue(Event *event)
+    {
+        if (!event) {
+            return nullptr;
+        }
+        BaseGlobalEvent *global_event = event->globalEvent();
+        if (!global_event) {
+            return event;
+        }
+        panic_if(numMainEventQueues != 1,
+                 "BaseGlobalEvent::dispatchSingleQueue requires a single "
+                 "main event queue (numMainEventQueues=%u)",
+                 numMainEventQueues);
+        {
+            std::lock_guard<EventQueue> lock(*mainEventQueue[0]);
+            curEventQueue(mainEventQueue[0]);
+            global_event->process();
+        }
+        if (event->isExitEvent()) {
+            return event;
+        }
+        releaseBarrierEvent(event);
+        return nullptr;
+    }
+
     BaseGlobalEvent(Priority p, Flags f);
 
     virtual ~BaseGlobalEvent();
@@ -178,12 +203,12 @@ class BaseGlobalEventTemplate : public BaseGlobalEvent
 };
 
 /**
- * The main global event class.  Ordinary global events should derive
+ * The main global event class. Ordinary global events should derive
  * from this class, and define process() to specify the action to be
- * taken when the event is reached.  All threads will synchronize at a
- * barrier, exactly one of the threads will execute the process()
- * method as the barrier completion step. The barrier does not release
- * the threads until process() is complete.
+ * taken when the event is reached. Once all main event queues have
+ * reached their local BarrierEvent for this global event, the
+ * simulation loop executes process() once before advancing the queues
+ * into the next phase.
  */
 class GlobalEvent : public BaseGlobalEventTemplate<GlobalEvent>
 {
@@ -193,7 +218,6 @@ class GlobalEvent : public BaseGlobalEventTemplate<GlobalEvent>
     class BarrierEvent : public Base::BarrierEvent
     {
       public:
-        void process();
         BarrierEvent(Base *global_event, Priority p, Flags f)
             : Base::BarrierEvent(global_event, p, f)
         { }
@@ -213,9 +237,11 @@ class GlobalEvent : public BaseGlobalEventTemplate<GlobalEvent>
 };
 
 /**
- * A special global event that synchronizes all threads and forces
- * them to process asynchronously enqueued events.  Useful for
- * separating quanta in a quantum-based parallel simulation.
+ * A repeating global event that separates simulation quanta in a
+ * quantum-based multi-event-queue simulation. Each quantum boundary
+ * stops all main event queues so the simulation loop can synchronize
+ * worker threads, advance the quantum, and drain asynchronously
+ * enqueued cross-queue events at the start of the next phase.
  */
 class GlobalSyncEvent : public BaseGlobalEventTemplate<GlobalSyncEvent>
 {
@@ -225,7 +251,6 @@ class GlobalSyncEvent : public BaseGlobalEventTemplate<GlobalSyncEvent>
     class BarrierEvent : public Base::BarrierEvent
     {
       public:
-        void process();
         BarrierEvent(Base *global_event, Priority p, Flags f)
             : Base::BarrierEvent(global_event, p, f)
         { }

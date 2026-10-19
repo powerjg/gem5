@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2011-2013 Advanced Micro Devices, Inc.
  * Copyright (c) 2013 Mark D. Hill and David A. Wood
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,21 +37,8 @@ namespace gem5
 
 std::mutex BaseGlobalEvent::globalQMutex;
 
-// Defines the function that is called **once** per barrier sync event.
-void
-ProcessBarrier::operator()() const noexcept
-{
-    // BarrierEvent::globalBarrier() releases the event queue lock before
-    // waiting. Global event process() methods expect that lock to be held, so
-    // reacquire it for the duration of the completion step. The other event
-    // queues remain unlocked until the barrier phase completes.
-    std::lock_guard<EventQueue> lock(*curEventQueue());
-    event->process();
-}
-
 BaseGlobalEvent::BaseGlobalEvent(Priority p, Flags f)
-    : barrier(numMainEventQueues, ProcessBarrier{this}),
-      barrierEvent(numMainEventQueues, NULL)
+    : barrierEvent(numMainEventQueues, NULL)
 {
 }
 
@@ -135,20 +123,6 @@ BaseGlobalEvent::BarrierEvent::~BarrierEvent()
         _globalEvent->barrierEvent[0] = NULL;
         delete _globalEvent;
     }
-}
-
-
-void
-GlobalEvent::BarrierEvent::process()
-{
-    globalBarrier();
-}
-
-void
-GlobalSyncEvent::BarrierEvent::process()
-{
-    globalBarrier();
-    curEventQueue()->handleAsyncInsertions();
 }
 
 void

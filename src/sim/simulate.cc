@@ -43,9 +43,9 @@
 
 #include "sim/simulate.hh"
 
-#include <atomic>
-#include <barrier>
-#include <thread>
+#include <cassert>
+#include <memory>
+#include <mutex>
 
 #include "base/logging.hh"
 #include "base/pollevent.hh"
@@ -57,6 +57,7 @@
 #include "sim/init_signals.hh"
 #include "sim/sim_events.hh"
 #include "sim/sim_exit.hh"
+#include "sim/sim_threads.hh"
 #include "sim/stat_control.hh"
 
 namespace gem5
@@ -66,108 +67,6 @@ namespace gem5
 Event *doSimLoop(EventQueue *);
 
 GlobalSimLoopExitEvent *simulate_limit_event = nullptr;
-
-class SimulatorThreads
-{
-  public:
-    SimulatorThreads() = delete;
-    SimulatorThreads(const SimulatorThreads &) = delete;
-    SimulatorThreads &operator=(SimulatorThreads &) = delete;
-
-    SimulatorThreads(uint32_t num_queues)
-        : terminate(false),
-          numQueues(num_queues),
-          barrier(num_queues)
-    {
-        threads.reserve(num_queues);
-    }
-
-    ~SimulatorThreads()
-    {
-        // This should only happen after exit has been
-        // called. Subordinate event queues should normally (assuming
-        // exit is called from Python) be waiting on the barrier when
-        // this happens.
-        //
-        // N.B.: Not terminating here would make it impossible to
-        // safely destroy the barrier.
-        terminateThreads();
-    }
-
-    void runUntilLocalExit()
-    {
-        assert(!terminate);
-
-        // Start subordinate threads if needed.
-        if (threads.empty()) {
-            // the main thread (the one running Python) handles queue 0,
-            // so we only need to allocate new threads for queues 1..N-1.
-            // We'll call these the "subordinate" threads.
-            for (uint32_t i = 1; i < numQueues; i++) {
-                threads.emplace_back(
-                    [this](EventQueue *eq) {
-                        thread_main(eq);
-                    }, mainEventQueue[i]);
-            }
-        }
-
-        // This method is called from the main thread. All subordinate
-        // threads should be waiting on the barrier when the function
-        // is called. The arrival of the main thread here will satisfy
-        // the barrier and start another iteration in the thread loop.
-        barrier.arrive_and_wait();
-    }
-
-    void
-    terminateThreads()
-    {
-        assert(!terminate);
-        if (threads.empty())
-            return;
-
-        /* This function should only be called when the simulator is
-         * handling a global exit event (typically from Python). This
-         * means that the helper threads will be waiting on the
-         * barrier. Tell the helper threads to exit and release them from
-         * their barrier. */
-        terminate = true;
-        barrier.arrive_and_wait();
-
-        /* Wait for all of the threads to terminate */
-        for (auto &t : threads) {
-            t.join();
-        }
-
-        terminate = false;
-        threads.clear();
-    }
-
-  protected:
-    /**
-     * The main function for all subordinate threads (i.e., all threads
-     * other than the main thread).  These threads start by waiting on
-     * threadBarrier.  Once all threads have arrived at threadBarrier,
-     * they enter the simulation loop concurrently.  When they exit the
-     * loop, they return to waiting on threadBarrier.  This process is
-     * repeated until the simulation terminates.
-     */
-    void
-    thread_main(EventQueue *queue)
-    {
-        /* Wait for all initialisation to complete */
-        barrier.arrive_and_wait();
-
-        while (!terminate) {
-            doSimLoop(queue);
-            barrier.arrive_and_wait();
-        }
-    }
-
-    std::atomic<bool> terminate;
-    uint32_t numQueues;
-    std::vector<std::thread> threads;
-    std::barrier<> barrier;
-};
 
 static std::unique_ptr<SimulatorThreads> simulatorThreads;
 
@@ -205,8 +104,10 @@ simulate(Tick num_cycles)
     DPRINTF(EnteringEventQueue, "Entering event queue @ %d. Starting "
         "simulation...\n", curTick());
 
-    if (!simulatorThreads)
-        simulatorThreads.reset(new SimulatorThreads(numMainEventQueues));
+    if (!simulatorThreads) {
+        simulatorThreads.reset(new SimulatorThreads(numMainEventQueues,
+                                                    numSimThreads, doSimLoop));
+    }
 
     if (!simulate_limit_event) {
         // If the simulate_limit_event is not set, we set it to MaxTick.
@@ -251,8 +152,7 @@ simulate(Tick num_cycles)
         inParallelMode = true;
     }
 
-    simulatorThreads->runUntilLocalExit();
-    Event *local_event = doSimLoop(mainEventQueue[0]);
+    Event *local_event = simulatorThreads->runUntilLocalExit();
     assert(local_event);
 
     // Restore normal ctrl-c operation as soon as the event queue is done
@@ -298,7 +198,9 @@ Tick get_max_tick()
 void
 terminateEventQueueThreads()
 {
-    simulatorThreads->terminateThreads();
+    if (simulatorThreads) {
+        simulatorThreads->terminateThreads();
+    }
 }
 
 
@@ -312,7 +214,19 @@ doSimLoop(EventQueue *eventq)
 {
     // set the per thread current eventq pointer
     curEventQueue(eventq);
-    eventq->handleAsyncInsertions();
+    {
+        // Lock *eventq while draining async_queue at the start of the
+        // quantum. In dynamic dispatch (numThreads < numQueues), another
+        // worker thread already servicing queue 1 in the new quantum may
+        // enqueue a cross-queue event onto queue 2's async_queue before
+        // queue 2 has drained its async_queue from the previous quantum.
+        // Holding *eventq serializes that insertion against
+        // handleAsyncInsertions(), and any newly inserted cross-queue
+        // event is guaranteed to have a timestamp in at least the next
+        // quantum (never the current quantum).
+        std::lock_guard<EventQueue> lock(*eventq);
+        eventq->handleAsyncInsertions();
+    }
 
     bool mainQueue = eventq == getEventQueue(0);
 
@@ -360,7 +274,7 @@ doSimLoop(EventQueue *eventq)
         }
     }
 
-    // not reached... only exit is return on SimLoopExitEvent
+    // not reached... only exit is return on a BarrierEvent or async_exception
 }
 
 } // namespace gem5

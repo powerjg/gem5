@@ -11,6 +11,9 @@
  * unmodified and in its entirety in all distributions of the software,
  * modified or unmodified, in source code or in binary form.
  *
+ * Copyright (c) 2026 Google LLC
+ * All rights reserved.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met: redistributions of source code must retain the above copyright
@@ -268,6 +271,9 @@ BaseKvmCPU::finishMMIOPending()
 void
 BaseKvmCPU::restartEqThread()
 {
+    fatal_if(numSimThreads > 0 && numSimThreads < numMainEventQueues,
+             "KVM CPUs require one worker thread per main event queue");
+
     // Do thread-specific initialization. We need to setup signal
     // delivery for counters and timers from within the thread that
     // will execute the event queue to ensure that signals are

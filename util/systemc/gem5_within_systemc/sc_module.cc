@@ -14,6 +14,7 @@
  * Copyright (c) 2006 The Regents of The University of Michigan
  * Copyright (c) 2013 Advanced Micro Devices, Inc.
  * Copyright (c) 2013 Mark D. Hill and David A. Wood
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -238,7 +239,8 @@ Module::eventLoop()
                 next_event_time, gem5_time, systemc_time);
         } else {
             /* Service an event */
-            exitEvent = eventq->serviceOne();
+            exitEvent = gem5::BaseGlobalEvent::dispatchSingleQueue(
+                eventq->serviceOne());
 
             if (exitEvent) {
                 eventLoopExitEvent.notify(sc_core::SC_ZERO_TIME);

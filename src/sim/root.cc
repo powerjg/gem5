@@ -13,6 +13,7 @@
  *
  * Copyright (c) 2002-2005 The Regents of The University of Michigan
  * Copyright (c) 2011 Advanced Micro Devices, Inc.
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -187,6 +188,7 @@ Root::Root(const RootParams &p, int)
     lastTime.setTimer();
 
     simQuantum = p.sim_quantum;
+    numSimThreads = p.num_threads;
 
     // Some of the statistics are global and need to be accessed by
     // stat formulas. The most convenient way to implement that is by

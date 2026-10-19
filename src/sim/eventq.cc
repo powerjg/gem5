@@ -2,6 +2,7 @@
  * Copyright (c) 2000-2005 The Regents of The University of Michigan
  * Copyright (c) 2008 The Hewlett-Packard Development Company
  * Copyright (c) 2013 Advanced Micro Devices, Inc.
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,6 +54,7 @@ Tick simQuantum = 0;
 // cycle, before the pipeline simulation is performed.
 //
 uint32_t numMainEventQueues = 0;
+uint32_t numSimThreads = 0;
 std::vector<EventQueue *> mainEventQueue;
 __thread EventQueue *_curEventQueue = NULL;
 bool inParallelMode = false;
@@ -241,8 +243,16 @@ EventQueue::serviceOne()
     if (!event->squashed()) {
         // forward current cycle to the time when this event occurs.
         setCurTick(event->when());
-        if (debug::Event)
+        if (debug::Event) {
             event->trace("executed");
+        }
+        // Global events are dispatched by the simulation loop
+        // (SimulatorThreads, or BaseGlobalEvent::dispatchSingleQueue() in
+        // single-queue co-simulation loops), which processes them once after
+        // every main event queue has stopped at its local BarrierEvent.
+        if (event->globalEvent() != nullptr) {
+            return event;
+        }
         event->process();
         if (event->isExitEvent()) {
             assert(!event->flags.isSet(Event::Managed) ||

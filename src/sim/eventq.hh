@@ -2,6 +2,7 @@
  * Copyright (c) 2000-2005 The Regents of The University of Michigan
  * Copyright (c) 2013 Advanced Micro Devices, Inc.
  * Copyright (c) 2013 Mark D. Hill and David A. Wood
+ * Copyright (c) 2026 Google LLC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -70,6 +71,10 @@ extern Tick simQuantum;
 
 //! Current number of allocated main event queues.
 extern uint32_t numMainEventQueues;
+
+//! Number of host worker threads used to service main event queues (0 = one
+//! thread per main event queue).
+extern uint32_t numSimThreads;
 
 //! Array for main event queues.
 extern std::vector<EventQueue *> mainEventQueue;
@@ -861,6 +866,15 @@ class EventQueue
     Tick getCurTick() const { return _curTick; }
     Event *getHead() const { return head; }
 
+    /**
+     * Service the next event on this queue.
+     *
+     * Normal events are processed and released in place (returning NULL).
+     * Returns a non-NULL Event pointer when the queue must stop servicing:
+     * either an already-processed local exit event, or an unprocessed
+     * BaseGlobalEvent::BarrierEvent that the caller must dispatch and
+     * release.
+     */
     Event *serviceOne();
 
     /**

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Google LLC
 // Copyright (c) 2021-2023 The Regents of the University of California
 // All rights reserved.
 //
@@ -358,7 +359,8 @@ gem5Component::doSimLoop(gem5::EventQueue* eventq)
             }
         }
 
-        gem5::Event *exit_event = eventq->serviceOne();
+        gem5::Event *exit_event =
+            gem5::BaseGlobalEvent::dispatchSingleQueue(eventq->serviceOne());
         if (exit_event != NULL) {
             return exit_event;
         }

@@ -1,6 +1,7 @@
 # Copyright (c) 2005-2007 The Regents of The University of Michigan
 # Copyright (c) 2010-2013 Advanced Micro Devices, Inc.
 # Copyright (c) 2013 Mark D. Hill and David A. Wood
+# Copyright (c) 2026 Google LLC
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -67,6 +68,16 @@ class Root(SimObject):
     # Simulation Quantum for multiple main event queue simulation.
     # Needs to be set explicitly for a multi-eventq simulation.
     sim_quantum = Param.Tick(0, "simulation quantum")
+
+    # Number of host worker threads used to service multiple main event
+    # queues. 0 defaults to one worker thread per main event queue.
+    num_threads = Param.Unsigned(
+        0,
+        "number of host worker threads for multi-eventq simulation "
+        "(0 = one thread per main event queue; a value smaller than the "
+        "number of main event queues dynamically dispatches queues across "
+        "that many threads; KVM CPUs require the default)",
+    )
 
     full_system = Param.Bool("if this is a full system simulation")
 
